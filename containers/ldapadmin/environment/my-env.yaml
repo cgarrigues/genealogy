@@ -1,0 +1,15 @@
+# This is the default image configuration file
+# These values will persists in container environment.
+
+# All environment variables used after the container first start
+# must be defined here.
+# more information : https://github.com/osixia/docker-light-baseimage
+
+PHPLDAPADMIN_LDAP_HOSTS:
+  192.168.99.100:
+    server:
+      tls: false
+    login:
+      bind_id: cn=admin,dc=deepeddy,dc=com
+
+PHPLDAPADMIN_SERVER_ADMIN: cwg@deepeddy.com
