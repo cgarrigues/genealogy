@@ -1,0 +1,24 @@
+#
+# Trinsix specfic objects
+#
+# OID Base is iso(1) org(3) dod(6) internet(1) private(4) deepeddy(19106).
+#
+# LDAP elements are under 1.3.6.1.4.1.19106.1
+# Attribute types are under 1.3.6.1.4.1.19106.1.1
+# Object classes are under 1.3.6.1.4.1.19106.1.2
+# Host classes are under 1.3.6.1.4.1.19106.1.2.1
+# Samba junk is under 1.3.6.1.4.1.19106.1.99
+
+attributetype ( 1.3.6.1.4.1.19106.1.1.1
+	NAME 'rawData'
+	DESC 'Raw data for a gedcom source'
+	SYNTAX 1.3.6.1.4.1.1466.115.121.1.5
+	)
+
+objectclass ( 1.3.6.1.4.1.19106.1.2.1.1
+	NAME 'gedcomSour'
+	DESC 'a gedcom source file'
+	STRUCTURAL
+	MUST (objectClass $ cn $ description)
+	MAY ( rawData )
+	)
