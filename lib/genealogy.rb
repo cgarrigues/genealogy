@@ -37,17 +37,22 @@ class User
             })
   end
 
-  def addsource(source)
-    cn = source.filename
-    dn = "cn=#{cn},#{@dn}"
+  def addsource(source: nil, parentdn: @dn)
+    cn = source.title.gsub(/[#,]+/, '')
+    if source.label
+      cn += " #{source.label}"
+    end
+    dn = "cn=#{cn},#{parentdn}"
     attr = {
       cn: cn,
       objectclass: ["top", "gedcomSour"],
-      description: source.filename,
-      rawdata: source.rawdata,
     }
+    attr[:description] = cn
+    if source.rawdata
+      attr[:rawdata] = source.rawdata
+    end
     unless @ldap.add dn: dn, attributes: attr
-      raise "Couldn't add #{source.inspect} to #{self.inspect}"
+      raise "Couldn't add #{source.inspect} to #{self.inspect}: #{@ldap.get_operation_result.message}"
     end
   end
 
@@ -59,7 +64,7 @@ class User
         scope: Net::LDAP::SearchScope_SingleLevel,
         filter: Net::LDAP::Filter.eq("objectclass", "gedcomSour"),
       ) do |entry|
-        @sources.push GedcomSour.new ldapentry: entry
+        @sources.push GedcomSour.new ldapentry: entry, user: self
       end
     end
     @sources
@@ -74,7 +79,7 @@ class GedcomEntry
   attr_reader :children
   attr_reader :baddata
 
-  def initialize(command: "", label: nil, arg: "", parent: nil, source: nil)
+  def initialize(command: "", label: nil, arg: "", parent: nil, source: nil, **options)
     @command = command
     @label = label
     @arg = arg
@@ -130,9 +135,9 @@ class GedcomHead < GedcomEntry
   attr_reader :gedcom
   attr_reader :charset
 
-  def initialize(command: "", label: nil, arg: "", parent: nil, source: nil)
+  def initialize(source: nil, **options)
     if source
-      source.addhead self
+      @parent = source
     end
     super
   end
@@ -199,7 +204,7 @@ class GedcomAddr < GedcomEntry
   attr_reader :address
   attr_reader :phones
 
-  def initialize(command: "", label: nil, arg: "", parent: nil, source: nil)
+  def initialize(arg: "", **options)
     @address = arg
     @phones = []
     super
@@ -217,7 +222,7 @@ class GedcomAddr < GedcomEntry
 end
 
 class GedcomString < GedcomEntry
-  def initialize(command: "", label: nil, arg: "", parent: nil, source: nil)
+  def initialize(command: "", arg: "", parent: nil,**options)
     parent.addchild command, arg
   end
 end
@@ -270,7 +275,7 @@ class GedcomDate < GedcomEntry
     "DEC" => 12,
   }
   
-  def initialize(command: "", label: nil, arg: "", parent: nil, source: nil)
+  def initialize(arg: "", parent: nil, **options)
     #puts "#{self.class} #{arg.inspect}"
     @raw = arg
     args = arg.split(/\s+/)
@@ -343,30 +348,6 @@ class GedcomPlac < GedcomEntry
   attr_reader :places
   attr_reader :events
 
-  def initialize(command: nil, label: nil, arg: "", parent: nil, child: nil, source: nil)
-    @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
-    super
-  end
-  def addplace(place)
-    @places[place.name] = place
-  end
-  
-  def addevent(event, date = event.date)
-    if date
-      @events[date.year][date.month][date.day][date.relative].push event
-    else
-      @events[999999][0][0][0].push event
-    end
-  end
-
-  def delevent(event, date)
-    if date
-      @events[date.year][date.month][date.day][date.relative].delete_if {|i| i == event}
-    else
-      @events[999999][0][0][0].delete_if {|i| i == event}
-    end
-  end
-
   # This code is less that completely obvious.
   #
   # Note 1: If this is called by the internal recursion, it has a child: argument, but if it's called by the gedcom parsing code,
@@ -382,7 +363,7 @@ class GedcomPlac < GedcomEntry
   # Note 5: Conversely, if we have a child argument, we attach 'place' to that argument as it's parent.
   #
   # Clear as mud?
-  def initialize(command: nil, label: nil, arg: "", parent: nil, child: nil, source: nil)
+  def initialize(command: nil, label: nil, arg: "", parent: nil, child: nil, source: nil, **options)
     #puts "#{self.class} #{arg.inspect} #{child.inspect}"
     @places = {}
     @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
@@ -414,6 +395,26 @@ class GedcomPlac < GedcomEntry
     end
   end
   
+  def addplace(place)
+    @places[place.name] = place
+  end
+  
+  def addevent(event, date = event.date)
+    if date
+      @events[date.year][date.month][date.day][date.relative].push event
+    else
+      @events[999999][0][0][0].push event
+    end
+  end
+
+  def delevent(event, date)
+    if date
+      @events[date.year][date.month][date.day][date.relative].delete_if {|i| i == event}
+    else
+      @events[999999][0][0][0].delete_if {|i| i == event}
+    end
+  end
+
   def to_s
     if parent
       "#{@rawname}, #{parent}"
@@ -429,7 +430,7 @@ class GedcomEven < GedcomEntry
   attr_reader :description
   attr_reader :sources
 
-  def initialize(command: "", label: nil, arg: "", parent: nil, source: nil)
+  def initialize(source: nil, **options)
     super
     @sources = []
     if source
@@ -471,7 +472,7 @@ end
 class GedcomBirt < GedcomEven
   attr_reader :individual
 
-  def initialize(command: "", label: nil, arg: "", parent: nil, source: nil)
+  def initialize(parent: nil, **options)
     super
     @individual = parent
   end
@@ -489,7 +490,7 @@ class GedcomDeat < GedcomEven
   attr_reader :individual
   attr_reader :cause
 
-  def initialize(command: "", label: nil, arg: "", parent: nil, source: nil)
+  def initialize(parent: nil, **options)
     super
     @individual = parent
   end
@@ -514,7 +515,7 @@ end
 class GedcomBuri < GedcomEven
   attr_reader :individual
 
-  def initialize(command: "", label: nil, arg: "", parent: nil, source: nil)
+  def initialize(parent: nil, **options)
     super
     @individual = parent
   end
@@ -559,7 +560,7 @@ class GedcomAdop < GedcomEven
   attr_reader :individual
   attr_reader :parents
 
-  def initialize(command: "", label: nil, arg: "", parent: nil, source: nil)
+  def initialize(parent: nil, **options)
     super
     @individual = parent
     @parents = []
@@ -615,7 +616,7 @@ class GedcomIndi < GedcomEntry
   attr_accessor :father
   attr_reader :events
 
-  def initialize(command: "", label: nil, arg: "", parent: nil, source: nil)
+  def initialize(**options)
     #puts "#{self.class} #{arg.inspect}"
     @names = []
     @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
@@ -737,7 +738,7 @@ end
 class GedcomChar < GedcomEntry
   attr_reader :charset
   
-  def initialize(command: "", label: nil, arg: "", parent: nil, source: nil)
+  def initialize(command: nil, arg: "", parent: nil, **options)
     if arg == 'ANSEL'
       parent.addchild command, ANSEL::Converter.new
     else
@@ -747,7 +748,7 @@ class GedcomChar < GedcomEntry
 end
 
 class GedcomOffi < GedcomEntry
-  def initialize(command: "", label: nil, arg: "", parent: nil, source: nil)
+  def initialize(arg: "", parent: nil, **options)
     (@first, @last, @suffix) = arg.split(/\s*\/\s*/)
     parent.addchild command, $names[@last][@first][@suffix]
   end
@@ -758,7 +759,7 @@ class GedcomName < GedcomEntry
   attr_reader :last
   attr_reader :suffix
   
-  def initialize(command: "", label: nil, arg: "", parent: nil, source: nil)
+  def initialize(arg: "", **options)
     (@first, @last, @suffix) = arg.split(/\s*\/\s*/)
     $names[@last][@first][@suffix] = self
     super
@@ -774,7 +775,7 @@ class GedcomName < GedcomEntry
 end
 
 class GedcomSex < GedcomEntry
-  def initialize(command: "", label: nil, arg: "", parent: nil, source: nil)
+  def initialize(command: nil, arg: "", parent: nil, **options)
     if /^m/i.match(arg)
       gender = :male
     elsif /^f/i.match(arg)
@@ -806,24 +807,27 @@ class GedcomSour < GedcomEntry
   attr_reader :labels
   attr_reader :references
   attr_reader :rawdata
+  attr_reader :ldapentry
 
-  def initialize(command: "", label: nil, arg: "", parent: nil, filename: nil, source: nil, user: nil, ldapentry: nil)
+  def initialize(arg: nil, filename: nil, parent: nil, user: nil, source: nil, ldapentry: nil, **options)
     @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
     @authors = []
-    if ldapentry
-      @title = ldapentry[:description][0]
-      @rawdata = ldapentry[:rawdata][0]
+    @user = user
+    if @ldapentry = ldapentry
+      @title = @ldapentry.description[0]
+      @rawdata = @ldapentry.rawdata[0]
     elsif filename
       @filename = filename
       @title = filename
-      #@rawdata = File.readlines filename
       @rawdata = File.read filename
-      user.addsource self
+      @user.addsource source: self
     else
-      super command: command, label: label, arg: arg, parent: parent, source: source
+      @parent = source
+      @title = arg
+      super
     end
   end
-
+  
   def addhead head
     @head = head
   end
@@ -841,20 +845,20 @@ class GedcomSour < GedcomEntry
         parent.addchild command, @labels[arg]
         obj = @labels[arg]
       else
-        obj = classname.new command: command, label: label, arg: arg, parent: parent, source: self
+        obj = classname.new command: command, label: label, arg: arg, parent: parent, source: self, user: @user
         @references[arg].push obj
       end
     else
-      obj = classname.new command: command, label: label, arg: arg, parent: parent, source: self
+      obj = classname.new command: command, label: label, arg: arg, parent: parent, source: self, user: @user
     end
     obj
   end
 
   def parsefile
     entrystack = []
-    @labels = {}
+    @labels = {:root => self}
     @references = Hash.new { |hash, key| hash[key] = []}
-    @rawdata.split("\n").each do |line|
+    rawdata.split("\n").each do |line|
       if @head
         converter = @head.charset
       end
@@ -865,11 +869,11 @@ class GedcomSour < GedcomEntry
       depth = Integer matchdata[:depth]
       label = matchdata[:label] && matchdata[:label].upcase.to_sym
       command = matchdata[:command].upcase.to_sym
-      if label
-        puts "#{' ' * depth} @#{label}@ #{command} #{matchdata[:arg]}"
-      else
-        puts "#{' ' * depth} #{command} #{matchdata[:arg]}"
-      end
+#      if label
+#        puts "#{' ' * depth} @#{label}@ #{command} #{matchdata[:arg]}"
+#      else
+#        puts "#{' ' * depth} #{command} #{matchdata[:arg]}"
+#      end
       if depth > 0
         parent = entrystack[depth-1]
       else
@@ -880,9 +884,40 @@ class GedcomSour < GedcomEntry
     end
   end
   
+  def addevent(event, date = event.date)
+    if date
+      @events[date.year][date.month][date.day][date.relative].push event
+    else
+      @events[999999][0][0][0].push event
+    end
+    if @husband
+      @husband.addevent event, date
+    end
+    if @wife
+      @wife.addevent event, date
+    end
+  end
+
+  def delevent(event, date = event.date)
+    if date
+      @events[date.year][date.month][date.day][date.relative].delete_if {|i| i == event}
+    else
+      @events[999999][0][0][0].delete_if {|i| i == event}
+    end
+    if @husband
+      @husband.delevent event, date
+    end
+    if @wife
+      @wife.delevent event, date
+    end
+  end
+
   def addchild(command, child)
+    puts "Adding #{command} #{child.inspect} to #{self.inspect}"
     if command == :TITL
       @title = child
+      parentdn = @parent.ldapentry.dn
+      @user.addsource(source: self, parentdn: parentdn)
     elsif command == :VERS
       @version = child
     elsif command == :CORP
@@ -899,14 +934,14 @@ class GedcomSour < GedcomEntry
   end
   
   def to_s
-    @title
+    title
   end
 end
 
 class GedcomNote < GedcomEntry
   attr_reader :note
 
-  def initialize(command: "", label: nil, arg: "", parent: nil, source: nil)
+  def initialize(arg: "", **options)
     @note = arg
   end
 
@@ -933,7 +968,7 @@ class GedcomPage < GedcomEntry
   attr_reader :pageno
   attr_reader :source
   
-  def initialize(command: "", label: nil, arg: "", parent: nil, source: nil)
+  def initialize(arg: "", parent: nil, **options)
     @pageno = arg
     @source = parent
     #Change the source's parent to point to us instead of the source itself.
@@ -951,7 +986,7 @@ class GedcomFam < GedcomEntry
   attr_reader :wife
   attr_reader :events
   
-  def initialize(command: "", label: nil, arg: "", parent: nil, source: nil)
+  def initialize(**options)
     @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
     super
   end
