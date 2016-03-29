@@ -4,7 +4,9 @@
 $LOAD_PATH.unshift("#{File.dirname(__FILE__)}/../lib")
 require 'genealogy'
 
+user = User.new username: "admin", password: "4zY!4*s#bPMO"
 filename = ARGV[0]
-gedcom = GedcomSour.new filename: filename
-gedcom.parsefile
+gedcom = GedcomSour.new filename: filename, user: user
+puts gedcom.inspect
+#gedcom.parsefile
 

@@ -1,6 +1,7 @@
 $LOAD_PATH.unshift("#{File.dirname(__FILE__)}/../lib")
 require "genealogy/version"
 require 'ansel'
+require 'net/ldap'
 
 $names = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new}}
 $places = {}
@@ -20,6 +21,49 @@ def listeventsbyplace(places: $places, depth: 0)
       puts "#{' ' * depth} #{event.inspect}"
     end
     listeventsbyplace places: places[key].places, depth: depth+1
+  end
+end
+
+class User
+  def initialize(username: username, password: password)
+    @base = 'dc=deepeddy,dc=com'
+    @dn = "cn=#{username},#{@base}"
+    @ldap = Net::LDAP.new(
+      host: '192.168.99.100',
+      port: 389,
+      auth: {method: :simple,
+             username: @dn,
+             password: password,
+            })
+  end
+
+  def addsource(source)
+    cn = source.filename
+    dn = "cn=#{cn},#{@dn}"
+    attr = {
+      cn: cn,
+      objectclass: ["top", "gedcomSour"],
+      description: source.filename,
+      rawdata: source.rawdata,
+    }
+    unless @ldap.add dn: dn, attributes: attr
+      raise "Couldn't add #{source.inspect} to #{self.inspect}"
+    end
+  end
+  
+  def dumpldap
+    @ldap.search(
+      base: @base,
+      filter: Net::LDAP::Filter.eq("objectclass", "*"),
+    ) do |entry|
+      puts "DN: #{entry.dn}"
+      entry.each do |attribute, values|
+        puts "   #{attribute}:"
+        values.each do |value|
+          puts "      --->#{value}"
+        end
+      end
+    end
   end
 end
 
@@ -764,13 +808,16 @@ class GedcomSour < GedcomEntry
   attr_reader :references
   attr_reader :rawdata
 
-  def initialize(command: "", label: nil, arg: "", parent: nil, filename: nil, source: nil)
+  def initialize(command: "", label: nil, arg: "", parent: nil, filename: nil, source: nil, user: nil)
     @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
     @authors = []
     if filename
       @filename = filename
       @title = filename
-      @rawdata = File.readlines filename
+      #@rawdata = File.readlines filename
+      @rawdata = File.read filename
+      user.addsource self
+      user.dumpldap
     else
       super command: command, label: label, arg: arg, parent: parent, source: source
     end
