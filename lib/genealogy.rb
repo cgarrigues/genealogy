@@ -50,20 +50,19 @@ class User
       raise "Couldn't add #{source.inspect} to #{self.inspect}"
     end
   end
-  
-  def dumpldap
-    @ldap.search(
-      base: @base,
-      filter: Net::LDAP::Filter.eq("objectclass", "*"),
-    ) do |entry|
-      puts "DN: #{entry.dn}"
-      entry.each do |attribute, values|
-        puts "   #{attribute}:"
-        values.each do |value|
-          puts "      --->#{value}"
-        end
+
+  def sources
+    unless @sources
+      @sources = []
+      @ldap.search(
+        base: @dn,
+        scope: Net::LDAP::SearchScope_SingleLevel,
+        filter: Net::LDAP::Filter.eq("objectclass", "gedcomSour"),
+      ) do |entry|
+        @sources.push GedcomSour.new ldapentry: entry
       end
     end
+    @sources
   end
 end
 
@@ -808,16 +807,18 @@ class GedcomSour < GedcomEntry
   attr_reader :references
   attr_reader :rawdata
 
-  def initialize(command: "", label: nil, arg: "", parent: nil, filename: nil, source: nil, user: nil)
+  def initialize(command: "", label: nil, arg: "", parent: nil, filename: nil, source: nil, user: nil, ldapentry: nil)
     @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
     @authors = []
-    if filename
+    if ldapentry
+      @title = ldapentry[:description][0]
+      @rawdata = ldapentry[:rawdata][0]
+    elsif filename
       @filename = filename
       @title = filename
       #@rawdata = File.readlines filename
       @rawdata = File.read filename
       user.addsource self
-      user.dumpldap
     else
       super command: command, label: label, arg: arg, parent: parent, source: source
     end
@@ -853,7 +854,7 @@ class GedcomSour < GedcomEntry
     entrystack = []
     @labels = {}
     @references = Hash.new { |hash, key| hash[key] = []}
-    @rawdata.each do |line|
+    @rawdata.split("\n").each do |line|
       if @head
         converter = @head.charset
       end
@@ -864,11 +865,11 @@ class GedcomSour < GedcomEntry
       depth = Integer matchdata[:depth]
       label = matchdata[:label] && matchdata[:label].upcase.to_sym
       command = matchdata[:command].upcase.to_sym
-#      if label
-#        puts "#{' ' * depth} @#{label}@ #{command} #{matchdata[:arg]}"
-#      else
-#        puts "#{' ' * depth} #{command} #{matchdata[:arg]}"
-#      end
+      if label
+        puts "#{' ' * depth} @#{label}@ #{command} #{matchdata[:arg]}"
+      else
+        puts "#{' ' * depth} #{command} #{matchdata[:arg]}"
+      end
       if depth > 0
         parent = entrystack[depth-1]
       else
