@@ -2,6 +2,7 @@ $LOAD_PATH.unshift("#{File.dirname(__FILE__)}/../lib")
 require "genealogy/version"
 require 'ansel'
 require 'net/ldap'
+require 'set'
 
 $names = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new}}
 $places = {}
@@ -89,35 +90,50 @@ class User
 end
 
 class GedcomEntry
-  attr_reader :command
+  attr_reader :fieldname
   attr_reader :label
   attr_reader :arg
   attr_accessor :parent
-  attr_reader :children
   attr_reader :baddata
 
-  def initialize(command: "", label: nil, arg: "", parent: nil, source: nil, **options)
-    @command = command
+  def initialize(fieldname: "", label: nil, arg: "", parent: nil, user: nil, source: nil, **options)
+    @fieldname = fieldname
     @label = label
     @arg = arg
+    @user = user
     if parent
       @parent = parent
-      parent.addchild command, self
+      parent[fieldname] = self
     end
-    @children = Hash.new { |hash, key| hash[key] = []}
     if @label
       source.labels[@label] = self
       source.references[@label].each do |ref|
-        ref.parent.delchild ref.command, ref
-        ref.parent.addchild ref.command, self
+        ref.parent.delfield ref.fieldname, ref
+        ref.parent[ref.fieldname] = self
       end
     end
   end
 
   def to_s
-    "#{@label} #{@command} #{arg} #{children}"
+    "#{@label} #{@fieldname} #{arg}"
   end
 
+  @@multivaluevariables = Hash.new { |hash, key| hash[key] = Set.new}
+  @@gedcomtofield = Hash.new { |hash, key| hash[key] = Hash.new}
+  @@fieldtoldap = Hash.new { |hash, key| hash[key] = Hash.new}
+
+  def self.attr_multi(fieldname)
+    @@multivaluevariables[self].add "@#{fieldname}".to_sym
+  end
+
+  def self.attr_gedcom(fieldname, gedcomname)
+    @@gedcomtofield[self]["@#{gedcomname}".to_sym] = "@#{fieldname}".to_sym
+  end
+  
+  def self.attr_ldap(fieldname, ldapname)
+    @@fieldtoldap[self]["@#{fieldname}".to_sym] = ldapname
+  end
+  
   def inspect
     if @baddata
       "#<#{self.class}: #{to_s} :BAD>"
@@ -126,20 +142,34 @@ class GedcomEntry
     end
   end
   
-  def addchild(command, child)
-    unless command == :CHIL
-      puts "Adding #{command} #{child.inspect} to #{self.inspect}"
+  def []=(fieldname, value)
+    fieldname = @@gedcomtofield[self.class][fieldname] || fieldname
+    if @@multivaluevariables[self.class].include? fieldname
+      if oldvalues = instance_variable_get(fieldname)
+        instance_variable_set fieldname, oldvalues + [value]
+      else
+        instance_variable_set fieldname, [value]
+      end
+    else
+      instance_variable_set fieldname, value
     end
-    @children[command].push child
+    if fieldname = @@fieldtoldap[self.class][fieldname]
+      @user.addattribute @dn, fieldname, value
+    end
   end
   
-  def delchild(command, child)
-    puts "Deleting #{command} #{child.inspect} from #{self.inspect}"
-    @children[command].delete_if {|i| i == child}
+  def delfield(fieldname, value)
+    if @@multivaluevariables[self.class].include? fieldname
+      if oldvalues = instance_variable_get(fieldname)
+        instance_variable_set fieldname, oldvalues.delete_if {|i| i == value}
+      end
+    else
+      instance_variable_set fieldname, nil
+    end
   end
   
-  def self.definedcommands
-    ObjectSpace.each_object(Class).select { |klass| klass < self }.map {|i| i.to_s[6,999].upcase.to_sym}
+  def self.definedfieldnames
+    ObjectSpace.each_object(Class).select { |klass| klass < self }.map {|i| "@#{i.to_s[6,999].downcase}".to_sym}
   end
 end
 
@@ -159,33 +189,6 @@ class GedcomHead < GedcomEntry
     super
   end
   
-  def addchild(command, child)
-    if command == :SOUR
-      @source = child
-    elsif command == :DEST
-      @destination = child
-    elsif command == :DATE
-      @date = child
-    elsif command == :SUBM
-      @subm = child
-    elsif command == :FILE
-      @file = child
-    elsif command == :GEDC
-      @gedcom = child
-    elsif command == :CHAR
-      @charset = child
-    else
-      super
-    end
-  end
-
-  def delchild(command, child)
-    if command == :SUBM
-    else
-      super
-    end
-  end
-
   def dn
     @parent.dn
   end
@@ -194,36 +197,19 @@ end
 class GedcomGedc < GedcomEntry
   attr_reader :version
   attr_reader :form
-
-  def addchild(command, child)
-    if command == :VERS
-      @version = child
-    elsif command == :FORM
-      @form = child
-    else
-      super
-    end
-  end
 end
 
 class GedcomSubm < GedcomEntry
   attr_reader :name
   attr_reader :address
-
-  def addchild(command, child)
-    if command == :NAME
-      @name = child
-    elsif command == :ADDR
-      @address = child
-    else
-      super
-    end
-  end
+  attr_multi :name
 end
 
 class GedcomAddr < GedcomEntry
   attr_reader :address
   attr_reader :phones
+  attr_multi :phon
+  attr_gedcom :address, :addr
 
   def initialize(arg: "", **options)
     @address = arg
@@ -231,11 +217,9 @@ class GedcomAddr < GedcomEntry
     super
   end
   
-  def addchild(command, child)
-    if command == :CONT
+  def []=(fieldname, child)
+    if fieldname == :@cont
       @address += "\n" + child
-    elsif command == :PHON
-      @phones.push child
     else
       super
     end
@@ -243,8 +227,8 @@ class GedcomAddr < GedcomEntry
 end
 
 class GedcomString < GedcomEntry
-  def initialize(command: "", arg: "", parent: nil,**options)
-    parent.addchild command, arg
+  def initialize(fieldname: "", arg: "", parent: nil,**options)
+    parent[fieldname] = arg
   end
 end
 
@@ -384,7 +368,7 @@ class GedcomPlac < GedcomEntry
   # Note 5: Conversely, if we have a child argument, we attach 'place' to that argument as it's parent.
   #
   # Clear as mud?
-  def initialize(command: nil, label: nil, arg: "", parent: nil, child: nil, source: nil, **options)
+  def initialize(fieldname: nil, label: nil, arg: "", parent: nil, child: nil, source: nil, **options)
     #puts "#{self.class} #{arg.inspect} #{child.inspect}"
     @places = {}
     @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
@@ -412,7 +396,7 @@ class GedcomPlac < GedcomEntry
     end
     if parent
       place.addevent parent
-      parent.addchild command, place
+      parent[fieldname] = place
     end
   end
   
@@ -447,9 +431,10 @@ end
 
 class GedcomEven < GedcomEntry
   attr_reader :date
-  attr_reader :place
+  attr_gedcom :place, :plac
   attr_reader :description
   attr_reader :sources
+  attr_gedcom :type, :description
 
   def initialize(source: nil, **options)
     super
@@ -467,15 +452,9 @@ class GedcomEven < GedcomEntry
     end
   end
 
-  def addchild(command, child)
-    if command == :DATE
-      @date = child
-    elsif command == :PLAC
-      @place = child
-    elsif command == :TYPE
-      @description = child
-    elsif command == :SOUR
-      addsource child
+  def []=(fieldname, value)
+    if fieldname == :@sour
+      addsource value
     else
       super
     end
@@ -509,19 +488,11 @@ end
 
 class GedcomDeat < GedcomEven
   attr_reader :individual
-  attr_reader :cause
+  attr_gedcom :cause, :caus
 
   def initialize(parent: nil, **options)
     super
     @individual = parent
-  end
-
-  def addchild(command, child)
-    if command == :CAUS
-      @cause = child
-    else
-      super
-    end
   end
 
   def to_s
@@ -556,15 +527,7 @@ class GedcomBuri < GedcomEven
 end
 
 class GedcomMarr < GedcomEven
-  attr_reader :officiator
-
-  def addchild(command, child)
-    if command == :OFFI
-      @officiator = child
-    else
-      super
-    end
-  end
+  attr_gedcom :officiator, :offi
 
   def to_s
     "#{date} #{@parent.inspect}"
@@ -587,15 +550,15 @@ class GedcomAdop < GedcomEven
     @parents = []
   end
 
-  def addchild(command, child)
-    if command == :FAMC
-      if child.respond_to? :addevent
-        child.addevent self, @date
-        if child.husband
-          @parents.push child.husband
+  def []=(fieldname, value)
+    if fieldname == :@famc
+      if value.respond_to? :addevent
+        value.addevent self, @date
+        if value.husband
+          @parents.push value.husband
         end
-        if child.wife
-          @parents.push child.wife
+        if value.wife
+          @parents.push value.wife
         end
       end
     else
@@ -603,15 +566,15 @@ class GedcomAdop < GedcomEven
     end
   end
 
-  def delchild(command, child)
-    if command == :FAMC
-      if child.respond_to? :delevent
-        child.delevent self, @date
-        if child.husband
-          @parents.delete_if {|i| i == child.husband}
+  def delfield(fieldname, value)
+    if fieldname == :@famc
+      if value.respond_to? :delevent
+        value.delevent self, @date
+        if value.husband
+          @parents.delete_if {|i| i == value.husband}
         end
-        if child.wife
-          @parents.delete_if {|i| i == child.wife}
+        if value.wife
+          @parents.delete_if {|i| i == value.wife}
         end
       end
     else
@@ -630,12 +593,13 @@ end
 class GedcomIndi < GedcomEntry
   attr_reader :names
   attr_reader :sex
-  attr_reader :birth
+  attr_gedcom :birth, :birt
   attr_reader :baptism
-  attr_reader :death
+  attr_gedcom :death, :deat
   attr_accessor :mother
   attr_accessor :father
   attr_reader :events
+  attr_multi :name
 
   def initialize(**options)
     #puts "#{self.class} #{arg.inspect}"
@@ -719,37 +683,23 @@ class GedcomIndi < GedcomEntry
     end
   end
   
-  def addchild(command, child)
-    if command == :NAME
-      @names.push child
-    elsif command == :SEX
-      @sex = child
-    elsif command == :BIRT
-      @birth = child
-      addevent child, nil
-    elsif command == :DEAT
-      @death = child
-      addevent child, nil
-    elsif command == :BURI
-      addevent child, nil
-    elsif command == :BAPM
-      addevent child, nil
-    elsif command == :EVEN
-      addevent child, nil
-    elsif command == :ADOP
-      addevent child, nil
-    elsif command == :FAMS
-    elsif command == :FAMC
-    elsif command == :SOUR
-      addsource child
-    else
-      super
-    end
-  end
-
-  def delchild(command, child)
-    if command == :FAMS
-    elsif command == :FAMC
+  def []=(fieldname, value)
+    if fieldname == :@birt
+      @birt = value
+      addevent value, nil
+    elsif fieldname == :@deat
+      @deat = value
+      addevent value, nil
+    elsif fieldname == :@buri
+      addevent value, nil
+    elsif fieldname == :@bapm
+      addevent value, nil
+    elsif fieldname == :@even
+      addevent value, nil
+    elsif fieldname == :@adop
+      addevent value, nil
+    elsif fieldname == :@sour
+      addsource value
     else
       super
     end
@@ -759,9 +709,9 @@ end
 class GedcomChar < GedcomEntry
   attr_reader :charset
   
-  def initialize(command: nil, arg: "", parent: nil, **options)
+  def initialize(fieldname: nil, arg: "", parent: nil, **options)
     if arg == 'ANSEL'
-      parent.addchild command, ANSEL::Converter.new
+      parent[fieldname] = ANSEL::Converter.new
     else
       raise "Don't know what to do with #{arg} encoding"
     end
@@ -771,7 +721,7 @@ end
 class GedcomOffi < GedcomEntry
   def initialize(arg: "", parent: nil, **options)
     (@first, @last, @suffix) = arg.split(/\s*\/\s*/)
-    parent.addchild command, $names[@last][@first][@suffix]
+    parent[fieldname] = $names[@last][@first][@suffix]
   end
 end
 
@@ -796,7 +746,7 @@ class GedcomName < GedcomEntry
 end
 
 class GedcomSex < GedcomEntry
-  def initialize(command: nil, arg: "", parent: nil, **options)
+  def initialize(fieldname: nil, arg: "", parent: nil, **options)
     if /^m/i.match(arg)
       gender = :male
     elsif /^f/i.match(arg)
@@ -804,7 +754,7 @@ class GedcomSex < GedcomEntry
     else
       gender = arg
     end
-    parent.addchild command, gender
+    parent[fieldname] = gender
   end
   
   def to_s
@@ -817,12 +767,19 @@ end
 
 class GedcomSour < GedcomEntry
   attr_reader :version
+  attr_gedcom :version, :vers
+  attr_ldap :version, :version
   attr_reader :title
+  attr_gedcom :title, :titl
+  attr_ldap :title, :title
   attr_reader :note
   attr_reader :events
   attr_reader :corp
-  attr_reader :author
-  attr_reader :publication
+  attr_ldap :corp, :corp
+  attr_reader :auth
+  attr_ldap :auth, :author
+  attr_reader :publ
+  attr_ldap :publ, :publication
   attr_reader :filename
   attr_reader :head
   attr_reader :labels
@@ -830,18 +787,19 @@ class GedcomSour < GedcomEntry
   attr_reader :rawdata
   attr_accessor :dn
 
-  def initialize(arg: nil, filename: nil, parent: nil, user: nil, source: nil, ldapentry: nil, **options)
+  def initialize(arg: nil, filename: nil, parent: nil, source: nil, ldapentry: nil, **options)
     @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
     @authors = []
-    @user = user
     if ldapentry
       @title = ldapentry.title[0]
       @rawdata = ldapentry.rawdata[0]
       @dn = ldapentry.dn
+      super
     elsif filename
       @filename = filename
       @title = filename
       @rawdata = File.read filename
+      super
       @user.addsource source: self
     else
       @parent = source
@@ -855,9 +813,9 @@ class GedcomSour < GedcomEntry
     @head = head
   end
   
-  def makeentry(label, command, arg, parent)
-    if GedcomEntry.definedcommands.member? command
-      classname = Module.const_get ("Gedcom" + command.to_s.capitalize)
+  def makeentry(label, fieldname, arg, parent)
+    if GedcomEntry.definedfieldnames.member? fieldname
+      classname = Module.const_get ("Gedcom" + fieldname.to_s[1..9999].capitalize)
     else
       classname = GedcomEntry
     end
@@ -865,14 +823,14 @@ class GedcomSour < GedcomEntry
       arg = matchdata[:ref].upcase.to_sym
       if @labels[arg]
         @labels[arg].parent = parent
-        parent.addchild command, @labels[arg]
+        parent[fieldname] = @labels[arg]
         obj = @labels[arg]
       else
-        obj = classname.new command: command, label: label, arg: arg, parent: parent, source: self, user: @user
+        obj = classname.new fieldname: fieldname, label: label, arg: arg, parent: parent, source: self, user: @user
         @references[arg].push obj
       end
     else
-      obj = classname.new command: command, label: label, arg: arg, parent: parent, source: self, user: @user
+      obj = classname.new fieldname: fieldname, label: label, arg: arg, parent: parent, source: self, user: @user
     end
     obj
   end
@@ -888,14 +846,14 @@ class GedcomSour < GedcomEntry
       if converter
         line = converter.convert(line)
       end
-      matchdata = /^(?<depth>\d+)(\s+\@(?<label>\w+)\@)?\s*(?<command>\w+)(\s(?<arg>.*))?/.match(line)
+      matchdata = /^(?<depth>\d+)(\s+\@(?<label>\w+)\@)?\s*(?<fieldname>\w+)(\s(?<arg>.*))?/.match(line)
       depth = Integer matchdata[:depth]
       label = matchdata[:label] && matchdata[:label].upcase.to_sym
-      command = matchdata[:command].upcase.to_sym
+      fieldname = "@#{matchdata[:fieldname].downcase}".to_sym
 #      if label
-#        puts "#{' ' * depth} @#{label}@ #{command} #{matchdata[:arg]}"
+#        puts "#{' ' * depth} @#{label}@ #{fieldname} #{matchdata[:arg]}"
 #      else
-#        puts "#{' ' * depth} #{command} #{matchdata[:arg]}"
+#        puts "#{' ' * depth} #{fieldname} #{matchdata[:arg]}"
 #      end
       if depth > 0
         parent = entrystack[depth-1]
@@ -903,7 +861,7 @@ class GedcomSour < GedcomEntry
         parent = nil
       end
       arg = matchdata[:arg] || ""
-      entrystack[depth] = makeentry label, command, arg, parent
+      entrystack[depth] = makeentry label, fieldname, arg, parent
     end
   end
   
@@ -935,31 +893,6 @@ class GedcomSour < GedcomEntry
     end
   end
 
-
-  def addchild(command, child)
-    if command == :TITL
-      @title = child
-      @user.addattribute @dn, :title, @title
-    elsif command == :VERS
-      @version = child
-      @user.addattribute @dn, :version, @version
-    elsif command == :CORP
-      @corp = child
-      @user.addattribute @dn, :corp, @corp
-    elsif command == :NOTE
-      @note = child
-      @user.addattribute @dn, :note, @note
-    elsif command == :PUBL
-      @publication = child
-      @user.addattribute @dn, :publication, @publication
-    elsif command == :AUTH
-      @authors.push child
-      @user.addattribute @dn, :author, child
-    else
-      super
-    end
-  end
-  
   def to_s
     title
   end
@@ -972,9 +905,9 @@ class GedcomNote < GedcomEntry
     @note = arg
   end
 
-  def addchild(command, child)
-    if command == :CONT
-      @note += "\n" + child
+  def []=(fieldname, value)
+    if fieldname == :@cont
+      @note += "\n" + value
     else
       super
     end
@@ -993,7 +926,7 @@ end
 
 class GedcomPage < GedcomEntry
   attr_reader :pageno
-  attr_reader :source
+  attr_gedcom :source, :sour
   
   def initialize(arg: "", parent: nil, **options)
     @pageno = arg
@@ -1009,12 +942,14 @@ class GedcomPage < GedcomEntry
 end
 
 class GedcomFam < GedcomEntry
-  attr_reader :husband
+  attr_gedcom :husband, :husb
   attr_reader :wife
   attr_reader :events
+  attr_reader :children
   
   def initialize(**options)
     @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
+    @children = []
     super
   end
   
@@ -1032,9 +967,9 @@ class GedcomFam < GedcomEntry
     "#{husband} and #{wife}"
   end
 
-  def addchild(command, child)
-    if command == :HUSB
-      @husband = child
+  def []=(fieldname, value)
+    if fieldname == :@husb
+      @husband = value
       @children.each do |child|
         child.father = @husband
       end
@@ -1049,8 +984,8 @@ class GedcomFam < GedcomEntry
           end
         end
       end
-    elsif command == :WIFE
-      @wife = child
+    elsif fieldname == :@wife
+      @wife = value
       @children.each do |child|
         child.mother = @wife
       end
@@ -1065,27 +1000,19 @@ class GedcomFam < GedcomEntry
           end
         end
       end
-    elsif command == :MARR
-      #puts "Adding #{command} #{child.inspect} to #{self.inspect}"
-    elsif command == :DIV
-      #puts "adding #{command} #{child.inspect} to #{self.inspect}"
-    elsif command == :EVEN
-      #puts "Adding #{command} #{child.inspect} to #{self.inspect}"
-    elsif command == :NAME
-      #puts "Adding #{command} #{child.inspect} to #{self.inspect}"
-    elsif command == :CHIL
-      #puts "Adding #{command} #{child.inspect} to #{self.inspect}"
-      super
+    elsif fieldname == :@chil
+      #puts "Adding #{fieldname} #{value.inspect} to #{self.inspect}"
+      @children.push child
       if @husband
-        child.father = @husband
-        if child.birth
-          @husband.addevent child.birth
+        value.father = @husband
+        if value.birth
+          @husband.addevent value.birth
         end
       end
       if @wife
-        child.mother = @wife
-        if child.birth
-          @wife.addevent child.birth
+        value.mother = @wife
+        if value.birth
+          @wife.addevent value.birth
         end
       end
     else
