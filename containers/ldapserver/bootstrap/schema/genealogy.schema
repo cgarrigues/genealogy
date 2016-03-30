@@ -15,10 +15,50 @@ attributetype ( 1.3.6.1.4.1.19106.1.1.1
 	SYNTAX 1.3.6.1.4.1.1466.115.121.1.5
 	)
 
+attributetype ( 1.3.6.1.4.1.19106.1.1.2
+	NAME 'version'
+	DESC 'version of the gedcom source'
+        EQUALITY caseIgnoreIA5Match
+        SUBSTR caseIgnoreIA5SubstringsMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+        )
+	
+attributetype ( 1.3.6.1.4.1.19106.1.1.3
+	NAME 'corp'
+	DESC 'corp from the gedcom source'
+        EQUALITY caseIgnoreIA5Match
+        SUBSTR caseIgnoreIA5SubstringsMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+        )
+	
+attributetype ( 1.3.6.1.4.1.19106.1.1.4
+	NAME 'note'
+	DESC 'notes on the gedcom source'
+        EQUALITY caseIgnoreIA5Match
+        SUBSTR caseIgnoreIA5SubstringsMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+        )
+	
+attributetype ( 1.3.6.1.4.1.19106.1.1.5
+	NAME 'publication'
+	DESC 'publication of the gedcom source'
+        EQUALITY caseIgnoreIA5Match
+        SUBSTR caseIgnoreIA5SubstringsMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+        )
+	
+attributetype ( 1.3.6.1.4.1.19106.1.1.6
+	NAME 'author'
+	DESC 'author of the gedcom source'
+        EQUALITY caseIgnoreIA5Match
+        SUBSTR caseIgnoreIA5SubstringsMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+        )
+	
 objectclass ( 1.3.6.1.4.1.19106.1.2.1.1
 	NAME 'gedcomSour'
 	DESC 'a gedcom source file'
 	STRUCTURAL
-	MUST (objectClass $ cn)
-	MAY ( rawData $ title)
+	MUST (objectClass $ cn )
+	MAY ( rawData $ title $ version $ corp $ note $ publication $ author )
 	)

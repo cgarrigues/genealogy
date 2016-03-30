@@ -44,22 +44,28 @@ class User
     else
       cn = source.title
     end
-    newdn = "cn=#{cn},#{parentdn}"
+    source.dn = "cn=#{cn},#{parentdn}"
     attr = {
       cn: cn,
       objectclass: ["top", "gedcomSour"],
     }
-    if source.title
+    unless source.title == ""
       attr[:title] = source.title
     end
     if source.rawdata
       attr[:rawdata] = source.rawdata
     end
-    unless @ldap.add dn: newdn, attributes: attr
+    unless @ldap.add dn: source.dn, attributes: attr
       raise "Couldn't add #{source.inspect} to #{self}: #{@ldap.get_operation_result.message}"
     end
   end
 
+  def addattribute(dn, attribute, value)
+    unless @ldap.add_attribute dn, attribute, value
+      raise "Couldn't add #{attribute} #{value.inspect} to #{dn}: #{@ldap.get_operation_result.message}"
+    end
+  end
+  
   def sources
     unless @sources
       @sources = []
@@ -172,6 +178,10 @@ class GedcomHead < GedcomEntry
     else
       super
     end
+  end
+
+  def dn
+    @parent.dn
   end
 end
 
@@ -812,7 +822,7 @@ class GedcomSour < GedcomEntry
   attr_reader :labels
   attr_reader :references
   attr_reader :rawdata
-  attr_reader :dn
+  attr_accessor :dn
 
   def initialize(arg: nil, filename: nil, parent: nil, user: nil, source: nil, ldapentry: nil, **options)
     @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
@@ -831,6 +841,7 @@ class GedcomSour < GedcomEntry
       @parent = source
       @title = arg
       super
+      @user.addsource source: self, parentdn: @parent.dn
     end
   end
   
@@ -918,22 +929,26 @@ class GedcomSour < GedcomEntry
     end
   end
 
+
   def addchild(command, child)
-    puts "Adding #{command} #{child.inspect} to #{self.inspect}"
     if command == :TITL
       @title = child
-      parentdn = @parent.dn
-      @user.addsource(source: self, parentdn: parentdn)
+      @user.addattribute @dn, :title, @title
     elsif command == :VERS
       @version = child
+      @user.addattribute @dn, :version, @version
     elsif command == :CORP
       @corp = child
+      @user.addattribute @dn, :corp, @corp
     elsif command == :NOTE
       @note = child
+      @user.addattribute @dn, :note, @note
     elsif command == :PUBL
       @publication = child
+      @user.addattribute @dn, :publication, @publication
     elsif command == :AUTH
       @authors.push child
+      @user.addattribute @dn, :author, child
     else
       super
     end
