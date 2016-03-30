@@ -44,7 +44,7 @@ class User
     else
       cn = source.title
     end
-    dn = "cn=#{cn},#{parentdn}"
+    newdn = "cn=#{cn},#{parentdn}"
     attr = {
       cn: cn,
       objectclass: ["top", "gedcomSour"],
@@ -55,7 +55,7 @@ class User
     if source.rawdata
       attr[:rawdata] = source.rawdata
     end
-    unless @ldap.add dn: dn, attributes: attr
+    unless @ldap.add dn: newdn, attributes: attr
       raise "Couldn't add #{source.inspect} to #{self}: #{@ldap.get_operation_result.message}"
     end
   end
@@ -67,6 +67,7 @@ class User
         base: @dn,
         scope: Net::LDAP::SearchScope_SingleLevel,
         filter: Net::LDAP::Filter.eq("objectclass", "gedcomSour"),
+        return_result: false,
       ) do |entry|
         @sources.push GedcomSour.new ldapentry: entry, user: self
       end
@@ -811,15 +812,16 @@ class GedcomSour < GedcomEntry
   attr_reader :labels
   attr_reader :references
   attr_reader :rawdata
-  attr_reader :ldapentry
+  attr_reader :dn
 
   def initialize(arg: nil, filename: nil, parent: nil, user: nil, source: nil, ldapentry: nil, **options)
     @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
     @authors = []
     @user = user
-    if @ldapentry = ldapentry
-      @title = @ldapentry.title[0]
-      @rawdata = @ldapentry.rawdata[0]
+    if ldapentry
+      @title = ldapentry.title[0]
+      @rawdata = ldapentry.rawdata[0]
+      @dn = ldapentry.dn
     elsif filename
       @filename = filename
       @title = filename
@@ -920,7 +922,7 @@ class GedcomSour < GedcomEntry
     puts "Adding #{command} #{child.inspect} to #{self.inspect}"
     if command == :TITL
       @title = child
-      parentdn = @parent.ldapentry.dn
+      parentdn = @parent.dn
       @user.addsource(source: self, parentdn: parentdn)
     elsif command == :VERS
       @version = child
