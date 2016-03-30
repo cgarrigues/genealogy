@@ -5,7 +5,8 @@ $LOAD_PATH.unshift("#{File.dirname(__FILE__)}/../lib")
 require 'genealogy'
 
 user = User.new username: "admin", password: "4zY!4*s#bPMO"
-user.sources.each do |source|
-  source.parsefile
+user.openldap do
+  user.sources.each do |source|
+    source.parsefile
+  end
 end
-

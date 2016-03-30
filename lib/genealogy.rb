@@ -37,6 +37,12 @@ class User
             })
   end
 
+  def openldap
+    @ldap.open do
+      yield
+    end
+  end
+  
   def addsource(source: nil, parentdn: @dn)
     cn = source.title.gsub(/[#,]+/, '')
     if source.label
