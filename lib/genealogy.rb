@@ -40,14 +40,18 @@ class User
   def addsource(source: nil, parentdn: @dn)
     cn = source.title.gsub(/[#,]+/, '')
     if source.label
-      cn += " #{source.label}"
+      cn = source.label.to_s
+    else
+      cn = source.title
     end
     dn = "cn=#{cn},#{parentdn}"
     attr = {
       cn: cn,
       objectclass: ["top", "gedcomSour"],
     }
-    attr[:title] = cn
+    if source.title
+      attr[:title] = source.title
+    end
     if source.rawdata
       attr[:rawdata] = source.rawdata
     end
