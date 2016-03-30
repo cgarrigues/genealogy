@@ -52,7 +52,7 @@ class User
       attr[:rawdata] = source.rawdata
     end
     unless @ldap.add dn: dn, attributes: attr
-      raise "Couldn't add #{source.inspect} to #{self.inspect}: #{@ldap.get_operation_result.message}"
+      raise "Couldn't add #{source.inspect} to #{self}: #{@ldap.get_operation_result.message}"
     end
   end
 
