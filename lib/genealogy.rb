@@ -47,7 +47,7 @@ class User
       cn: cn,
       objectclass: ["top", "gedcomSour"],
     }
-    attr[:description] = cn
+    attr[:title] = cn
     if source.rawdata
       attr[:rawdata] = source.rawdata
     end
@@ -814,7 +814,7 @@ class GedcomSour < GedcomEntry
     @authors = []
     @user = user
     if @ldapentry = ldapentry
-      @title = @ldapentry.description[0]
+      @title = @ldapentry.title[0]
       @rawdata = @ldapentry.rawdata[0]
     elsif filename
       @filename = filename

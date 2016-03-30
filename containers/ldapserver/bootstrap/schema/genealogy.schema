@@ -19,6 +19,6 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.1.1
 	NAME 'gedcomSour'
 	DESC 'a gedcom source file'
 	STRUCTURAL
-	MUST (objectClass $ cn $ description)
-	MAY ( rawData )
+	MUST (objectClass $ cn)
+	MAY ( rawData $ title)
 	)
