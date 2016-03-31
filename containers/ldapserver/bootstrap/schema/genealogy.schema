@@ -6,8 +6,6 @@
 # LDAP elements are under 1.3.6.1.4.1.19106.1
 # Attribute types are under 1.3.6.1.4.1.19106.1.1
 # Object classes are under 1.3.6.1.4.1.19106.1.2
-# Host classes are under 1.3.6.1.4.1.19106.1.2.1
-# Samba junk is under 1.3.6.1.4.1.19106.1.99
 
 attributetype ( 1.3.6.1.4.1.19106.1.1.1
 	NAME 'rawData'
@@ -55,10 +53,76 @@ attributetype ( 1.3.6.1.4.1.19106.1.1.6
         SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
         )
 	
-objectclass ( 1.3.6.1.4.1.19106.1.2.1.1
+attributetype ( 1.3.6.1.4.1.19106.1.1.7
+	NAME 'nameDNs'
+	DESC 'DNs of names that match this individual'
+        EQUALITY distinguishedNameMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
+        )
+	
+attributetype ( 1.3.6.1.4.1.19106.1.1.8
+	NAME 'gender'
+	DESC 'gender of individual'
+        EQUALITY caseIgnoreIA5Match
+        SUBSTR caseIgnoreIA5SubstringsMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+        )
+	
+attributetype ( 1.3.6.1.4.1.19106.1.1.9
+	NAME 'birthDN'
+	DESC 'DNs of birth event'
+        EQUALITY distinguishedNameMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
+        )
+	
+attributetype ( 1.3.6.1.4.1.19106.1.1.10
+	NAME 'baptismDN'
+	DESC 'DNs of baptism event'
+        EQUALITY distinguishedNameMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
+        )
+	
+attributetype ( 1.3.6.1.4.1.19106.1.1.11
+	NAME 'deathDN'
+	DESC 'DNs of death event'
+        EQUALITY distinguishedNameMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
+        )
+	
+attributetype ( 1.3.6.1.4.1.19106.1.1.12
+	NAME 'motherDN'
+	DESC 'DNs of mother'
+        EQUALITY distinguishedNameMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
+        )
+	
+attributetype ( 1.3.6.1.4.1.19106.1.1.13
+	NAME 'fatherDN'
+	DESC 'DNs of father'
+        EQUALITY distinguishedNameMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
+        )
+	
+attributetype ( 1.3.6.1.4.1.19106.1.1.14
+	NAME 'eventDNs'
+	DESC 'DNs of events in the individuals life'
+        EQUALITY distinguishedNameMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
+        )
+	
+objectclass ( 1.3.6.1.4.1.19106.1.2.1
 	NAME 'gedcomSour'
 	DESC 'a gedcom source file'
 	STRUCTURAL
 	MUST (objectClass $ cn )
 	MAY ( rawData $ title $ version $ corp $ note $ publication $ author )
 	)
+
+objectclass ( 1.3.6.1.4.1.19106.1.2.2
+	NAME 'gedcomIndi'
+	DESC 'a gedcom individual'
+	STRUCTURAL
+	MUST (objectClass $ cn )
+	MAY ( givenName $ sn $ initials $ nameDNs $ gender $ birthDN $ baptismDN $ deathDN $ motherDN $ fatherDN $ eventDNs )
+	)
+
