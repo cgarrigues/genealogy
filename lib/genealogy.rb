@@ -105,22 +105,27 @@ class GedcomEntry
           instance_variable_set fieldname, value[0]
         end
       end
-    else
-      @fieldname = fieldname
-      @label = label
-      @arg = arg
+    end
+    if user
       @user = user
-      if parent
-        @parent = parent
-        parent[fieldname] = self
+    end
+    if label
+      @label = label
+      source.labels[@label] = self
+      source.references[@label].each do |ref|
+        ref.parent.delfield ref.fieldname, ref
+        ref.parent[ref.fieldname] = self
       end
-      if @label
-        source.labels[@label] = self
-        source.references[@label].each do |ref|
-          ref.parent.delfield ref.fieldname, ref
-          ref.parent[ref.fieldname] = self
-        end
-      end
+    end
+    if fieldname
+      @fieldname = fieldname
+    end
+    if arg
+      @arg = arg
+    end
+    if parent
+      @parent = parent
+      parent[fieldname] = self
     end
   end
 
