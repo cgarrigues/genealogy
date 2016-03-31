@@ -850,11 +850,13 @@ class GedcomSour < GedcomEntry
       depth = Integer matchdata[:depth]
       label = matchdata[:label] && matchdata[:label].upcase.to_sym
       fieldname = "@#{matchdata[:fieldname].downcase}".to_sym
-#      if label
-#        puts "#{' ' * depth} @#{label}@ #{fieldname} #{matchdata[:arg]}"
-#      else
-#        puts "#{' ' * depth} #{fieldname} #{matchdata[:arg]}"
-#      end
+      if ENV['DEBUG']
+        if label
+          puts "#{' ' * depth} @#{label}@ #{fieldname} #{matchdata[:arg]}"
+        else
+          puts "#{' ' * depth} #{fieldname} #{matchdata[:arg]}"
+        end
+      end
       if depth > 0
         parent = entrystack[depth-1]
       else
