@@ -45,7 +45,6 @@ class User
   end
   
   def addsource(source: nil, parentdn: @dn)
-    cn = source.title.gsub(/[#,]+/, '')
     if source.label
       cn = source.label.to_s
     else
@@ -96,20 +95,31 @@ class GedcomEntry
   attr_accessor :parent
   attr_reader :baddata
 
-  def initialize(fieldname: "", label: nil, arg: "", parent: nil, user: nil, source: nil, **options)
-    @fieldname = fieldname
-    @label = label
-    @arg = arg
-    @user = user
-    if parent
-      @parent = parent
-      parent[fieldname] = self
-    end
-    if @label
-      source.labels[@label] = self
-      source.references[@label].each do |ref|
-        ref.parent.delfield ref.fieldname, ref
-        ref.parent[ref.fieldname] = self
+  def initialize(fieldname: "", label: nil, arg: "", parent: nil, user: nil, source: nil, ldapentry: nil, **options)
+    if ldapentry
+      ldapentry.each do |fieldname, value|
+        fieldname = @@ldaptofield[self.class][fieldname] || "@#{fieldname}".to_sym
+        if @@multivaluevariables[self.class].include? fieldname
+          instance_variable_set fieldname, value
+        else
+          instance_variable_set fieldname, value[0]
+        end
+      end
+    else
+      @fieldname = fieldname
+      @label = label
+      @arg = arg
+      @user = user
+      if parent
+        @parent = parent
+        parent[fieldname] = self
+      end
+      if @label
+        source.labels[@label] = self
+        source.references[@label].each do |ref|
+          ref.parent.delfield ref.fieldname, ref
+          ref.parent[ref.fieldname] = self
+        end
       end
     end
   end
@@ -121,6 +131,7 @@ class GedcomEntry
   @@multivaluevariables = Hash.new { |hash, key| hash[key] = Set.new}
   @@gedcomtofield = Hash.new { |hash, key| hash[key] = Hash.new}
   @@fieldtoldap = Hash.new { |hash, key| hash[key] = Hash.new}
+  @@ldaptofield = Hash.new { |hash, key| hash[key] = Hash.new}
 
   def self.attr_multi(fieldname)
     @@multivaluevariables[self].add "@#{fieldname}".to_sym
@@ -132,6 +143,7 @@ class GedcomEntry
   
   def self.attr_ldap(fieldname, ldapname)
     @@fieldtoldap[self]["@#{fieldname}".to_sym] = ldapname
+    @@ldaptofield[self][ldapname] = "@#{fieldname}".to_sym
   end
   
   def inspect
@@ -153,8 +165,10 @@ class GedcomEntry
     else
       instance_variable_set fieldname, value
     end
-    if fieldname = @@fieldtoldap[self.class][fieldname]
-      @user.addattribute @dn, fieldname, value
+    if @user
+      if fieldname = @@fieldtoldap[self.class][fieldname]
+        @user.addattribute @dn, fieldname, value
+      end
     end
   end
   
@@ -790,22 +804,23 @@ class GedcomSour < GedcomEntry
   def initialize(arg: nil, filename: nil, parent: nil, source: nil, ldapentry: nil, **options)
     @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
     @authors = []
-    if ldapentry
-      @title = ldapentry.title[0]
-      @rawdata = ldapentry.rawdata[0]
-      @dn = ldapentry.dn
-      super
-    elsif filename
+    if filename
       @filename = filename
       @title = filename
       @rawdata = File.read filename
-      super
-      @user.addsource source: self
     else
       @parent = source
       @title = arg
-      super
-      @user.addsource source: self, parentdn: @parent.dn
+    end
+    super
+    unless ldapentry
+      if @user
+        if @parent
+          @user.addsource source: self, parentdn: @parent.dn
+        else
+          @user.addsource source: self
+        end
+      end
     end
   end
   
