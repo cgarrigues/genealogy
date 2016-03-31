@@ -610,14 +610,13 @@ class GedcomBapm < GedcomEven
 end
 
 class GedcomIndi < GedcomEntry
-  attr_reader :names
-  attr_reader :sex
+  attr_reader :gender, :sex
   attr_gedcom :birth, :birt
   attr_reader :baptism
   attr_gedcom :death, :deat
   attr_accessor :mother
   attr_accessor :father
-  attr_reader :events
+  attr_multi :events
   attr_multi :name
 
   def initialize(**options)
