@@ -44,25 +44,24 @@ class User
     end
   end
   
-  def addsource(source: nil, parentdn: @dn)
-    if source.label
-      cn = source.label.to_s
+  def addtoldap(obj, objectclass, parentdn=@dn)
+    if obj.label
+      cn = obj.label.to_s
     else
-      cn = source.title
+      cn = obj.title
     end
-    source.dn = "cn=#{cn},#{parentdn}"
+    obj.dn = "cn=#{cn},#{parentdn}"
     attr = {
       cn: cn,
-      objectclass: ["top", "gedcomSour"],
+      objectclass: ["top", objectclass],
     }
-    unless source.title == ""
-      attr[:title] = source.title
+    obj.ldapfields.each do |fieldname|
+      if value = obj.instance_variable_get("@#{fieldname}".to_sym)
+        attr[fieldname] = value
+      end
     end
-    if source.rawdata
-      attr[:rawdata] = source.rawdata
-    end
-    unless @ldap.add dn: source.dn, attributes: attr
-      raise "Couldn't add #{source.inspect} to #{self}: #{@ldap.get_operation_result.message}"
+    unless @ldap.add dn: obj.dn, attributes: attr
+      raise "Couldn't add #{obj.inspect} to #{self} with attributes #{attr.inspect}: #{@ldap.get_operation_result.message}"
     end
   end
 
@@ -94,15 +93,16 @@ class GedcomEntry
   attr_reader :arg
   attr_accessor :parent
   attr_reader :baddata
+  attr_accessor :dn
 
   def initialize(fieldname: "", label: nil, arg: "", parent: nil, user: nil, source: nil, ldapentry: nil, **options)
     if ldapentry
       ldapentry.each do |fieldname, value|
-        fieldname = @@ldaptofield[self.class][fieldname] || "@#{fieldname}".to_sym
+        fieldname = @@ldaptofield[self.class][fieldname] || fieldname
         if @@multivaluevariables[self.class].include? fieldname
-          instance_variable_set fieldname, value
+          instance_variable_set "@#{fieldname}".to_sym, value
         else
-          instance_variable_set fieldname, value[0]
+          instance_variable_set "@#{fieldname}".to_sym, value[0]
         end
       end
     end
@@ -138,17 +138,21 @@ class GedcomEntry
   @@fieldtoldap = Hash.new { |hash, key| hash[key] = Hash.new}
   @@ldaptofield = Hash.new { |hash, key| hash[key] = Hash.new}
 
+  def ldapfields
+    @@fieldtoldap[self.class].keys
+  end
+
   def self.attr_multi(fieldname)
-    @@multivaluevariables[self].add "@#{fieldname}".to_sym
+    @@multivaluevariables[self].add fieldname
   end
 
   def self.attr_gedcom(fieldname, gedcomname)
-    @@gedcomtofield[self]["@#{gedcomname}".to_sym] = "@#{fieldname}".to_sym
+    @@gedcomtofield[self][gedcomname] = fieldname
   end
   
   def self.attr_ldap(fieldname, ldapname)
-    @@fieldtoldap[self]["@#{fieldname}".to_sym] = ldapname
-    @@ldaptofield[self][ldapname] = "@#{fieldname}".to_sym
+    @@fieldtoldap[self][fieldname] = ldapname
+    @@ldaptofield[self][ldapname] = fieldname
   end
   
   def inspect
@@ -162,13 +166,13 @@ class GedcomEntry
   def []=(fieldname, value)
     fieldname = @@gedcomtofield[self.class][fieldname] || fieldname
     if @@multivaluevariables[self.class].include? fieldname
-      if oldvalues = instance_variable_get(fieldname)
-        instance_variable_set fieldname, oldvalues + [value]
+      if oldvalues = instance_variable_get("@#{fieldname}".to_sym)
+        instance_variable_set "@#{fieldname}".to_sym, oldvalues + [value]
       else
-        instance_variable_set fieldname, [value]
+        instance_variable_set "@#{fieldname}".to_sym, [value]
       end
     else
-      instance_variable_set fieldname, value
+      instance_variable_set "@#{fieldname}".to_sym, value
     end
     if @user
       if fieldname = @@fieldtoldap[self.class][fieldname]
@@ -179,16 +183,16 @@ class GedcomEntry
   
   def delfield(fieldname, value)
     if @@multivaluevariables[self.class].include? fieldname
-      if oldvalues = instance_variable_get(fieldname)
-        instance_variable_set fieldname, oldvalues.delete_if {|i| i == value}
+      if oldvalues = instance_variable_get("@#{fieldname}".to_sym)
+        instance_variable_set "@#{fieldname}".to_sym, oldvalues.delete_if {|i| i == value}
       end
     else
-      instance_variable_set fieldname, nil
+      instance_variable_set "@#{fieldname}".to_sym, nil
     end
   end
   
   def self.definedfieldnames
-    ObjectSpace.each_object(Class).select { |klass| klass < self }.map {|i| "@#{i.to_s[6,999].downcase}".to_sym}
+    ObjectSpace.each_object(Class).select { |klass| klass < self }.map {|i| "#{i.to_s[6,999].downcase}".to_sym}
   end
 end
 
@@ -237,7 +241,7 @@ class GedcomAddr < GedcomEntry
   end
   
   def []=(fieldname, child)
-    if fieldname == :@cont
+    if fieldname == :cont
       @address += "\n" + child
     else
       super
@@ -472,7 +476,7 @@ class GedcomEven < GedcomEntry
   end
 
   def []=(fieldname, value)
-    if fieldname == :@sour
+    if fieldname == :sour
       addsource value
     else
       super
@@ -570,7 +574,7 @@ class GedcomAdop < GedcomEven
   end
 
   def []=(fieldname, value)
-    if fieldname == :@famc
+    if fieldname == :famc
       if value.respond_to? :addevent
         value.addevent self, @date
         if value.husband
@@ -586,7 +590,7 @@ class GedcomAdop < GedcomEven
   end
 
   def delfield(fieldname, value)
-    if fieldname == :@famc
+    if fieldname == :famc
       if value.respond_to? :delevent
         value.delevent self, @date
         if value.husband
@@ -617,13 +621,14 @@ class GedcomIndi < GedcomEntry
   attr_accessor :mother
   attr_accessor :father
   attr_multi :events
-  attr_multi :name
+  attr_multi :names
 
-  def initialize(**options)
+  def initialize(source: nil, **options)
     #puts "#{self.class} #{arg.inspect}"
     @names = []
     @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
     super
+    @user.addtoldap self, "gedcomIndi", source.dn
   end
 
   def to_s
@@ -641,7 +646,7 @@ class GedcomIndi < GedcomEntry
     else
       deathdate = ''
     end
-    "#{names[0]} #{birthdate} - #{deathdate}"
+    "#{@names[0]} #{birthdate} - #{deathdate}"
   end
 
   def addevent(event, date = event.date)
@@ -702,21 +707,21 @@ class GedcomIndi < GedcomEntry
   end
   
   def []=(fieldname, value)
-    if fieldname == :@birt
+    if fieldname == :birt
       @birt = value
       addevent value, nil
-    elsif fieldname == :@deat
+    elsif fieldname == :deat
       @deat = value
       addevent value, nil
-    elsif fieldname == :@buri
+    elsif fieldname == :buri
       addevent value, nil
-    elsif fieldname == :@bapm
+    elsif fieldname == :bapm
       addevent value, nil
-    elsif fieldname == :@even
+    elsif fieldname == :even
       addevent value, nil
-    elsif fieldname == :@adop
+    elsif fieldname == :adop
       addevent value, nil
-    elsif fieldname == :@sour
+    elsif fieldname == :sour
       addsource value
     else
       super
@@ -802,8 +807,7 @@ class GedcomSour < GedcomEntry
   attr_reader :head
   attr_reader :labels
   attr_reader :references
-  attr_reader :rawdata
-  attr_accessor :dn
+  attr_ldap :rawdata, :rawdata
 
   def initialize(arg: nil, filename: nil, parent: nil, source: nil, ldapentry: nil, **options)
     @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
@@ -814,15 +818,17 @@ class GedcomSour < GedcomEntry
       @rawdata = File.read filename
     else
       @parent = source
-      @title = arg
+      unless arg == ""
+        @title = arg
+      end
     end
     super
     unless ldapentry
       if @user
         if @parent
-          @user.addsource source: self, parentdn: @parent.dn
+          @user.addtoldap self, "gedcomSour", @parent.dn
         else
-          @user.addsource source: self
+          @user.addtoldap self, "gedcomSour"
         end
       end
     end
@@ -834,7 +840,7 @@ class GedcomSour < GedcomEntry
   
   def makeentry(label, fieldname, arg, parent)
     if GedcomEntry.definedfieldnames.member? fieldname
-      classname = Module.const_get ("Gedcom" + fieldname.to_s[1..9999].capitalize)
+      classname = Module.const_get ("Gedcom" + fieldname.to_s.capitalize)
     else
       classname = GedcomEntry
     end
@@ -858,7 +864,7 @@ class GedcomSour < GedcomEntry
     entrystack = []
     @labels = {:root => self}
     @references = Hash.new { |hash, key| hash[key] = []}
-    rawdata.split("\n").each do |line|
+    @rawdata.split("\n").each do |line|
       if @head
         converter = @head.charset
       end
@@ -868,7 +874,7 @@ class GedcomSour < GedcomEntry
       matchdata = /^(?<depth>\d+)(\s+\@(?<label>\w+)\@)?\s*(?<fieldname>\w+)(\s(?<arg>.*))?/.match(line)
       depth = Integer matchdata[:depth]
       label = matchdata[:label] && matchdata[:label].upcase.to_sym
-      fieldname = "@#{matchdata[:fieldname].downcase}".to_sym
+      fieldname = "#{matchdata[:fieldname].downcase}".to_sym
       if ENV['DEBUG']
         if label
           puts "#{' ' * depth} @#{label}@ #{fieldname} #{matchdata[:arg]}"
@@ -927,7 +933,7 @@ class GedcomNote < GedcomEntry
   end
 
   def []=(fieldname, value)
-    if fieldname == :@cont
+    if fieldname == :cont
       @note += "\n" + value
     else
       super
@@ -989,7 +995,7 @@ class GedcomFam < GedcomEntry
   end
 
   def []=(fieldname, value)
-    if fieldname == :@husb
+    if fieldname == :husb
       @husband = value
       @children.each do |child|
         child.father = @husband
@@ -1005,7 +1011,7 @@ class GedcomFam < GedcomEntry
           end
         end
       end
-    elsif fieldname == :@wife
+    elsif fieldname == :wife
       @wife = value
       @children.each do |child|
         child.mother = @wife
@@ -1021,7 +1027,7 @@ class GedcomFam < GedcomEntry
           end
         end
       end
-    elsif fieldname == :@chil
+    elsif fieldname == :chil
       #puts "Adding #{fieldname} #{value.inspect} to #{self.inspect}"
       @children.push child
       if @husband
