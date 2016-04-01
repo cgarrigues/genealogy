@@ -73,9 +73,6 @@ class User
         unless @ldap.add_attribute dn, attribute, value.dn
           raise "Couldn't add #{attribute} #{value.inspect} to #{dn}: #{@ldap.get_operation_result.message}"
         end
-      else
-        puts "Not adding #{attribute} #{value.inspect} to #{dn}"
-
       end
     else
       unless @ldap.add_attribute dn, attribute, value
@@ -642,6 +639,10 @@ class GedcomIndi < GedcomEntry
   attr_gedcom :sources, :sour
   attr_ldap :sources, :sourcedns
   attr_multi :sources
+  attr_ldap :cn, :cn
+  attr_ldap :first, :givenname
+  attr_ldap :last, :sn
+  attr_ldap :suffix, :initials
 
   def initialize(source: nil, **options)
     #puts "#{self.class} #{arg.inspect}"
@@ -729,7 +730,21 @@ class GedcomIndi < GedcomEntry
   end
   
   def []=(fieldname, value)
-    if fieldname == :birt
+    if fieldname == :name
+      super 
+      if cn = value.to_s
+        self[:cn] = cn
+      end
+      if first = value.first
+        self[:first] = first
+      end
+      if last = value.last
+        self[:last] = last
+      end
+      if suffix = value.suffix
+        self[:suffix] = suffix
+      end
+    elsif fieldname == :birt
       super
       addevent value, nil
     elsif fieldname == :deat
@@ -783,7 +798,7 @@ class GedcomName < GedcomEntry
 
   def to_s
     if @suffix
-      "#{@first} /#{@last}/ #{@suffix}"
+      "#{@first} /#{@last}/#{@suffix}"
     else
       "#{@first} /#{@last}/"
     end
