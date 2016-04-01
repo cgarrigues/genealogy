@@ -733,7 +733,7 @@ class GedcomIndi < GedcomEntry
     if fieldname == :name
       super 
       unless @cn
-        # If there are more than one name defined, populate with the first one; the others will remain the name objects
+        # If there are more than one name defined, populate with the first one; the others will be findable via the name objects
         if cn = value.to_s
           self[:cn] = cn
         end
