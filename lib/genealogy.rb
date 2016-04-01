@@ -46,13 +46,13 @@ class User
   
   def addtoldap(obj, objectclass, parentdn=@dn)
     if obj.label
-      cn = obj.label.to_s
+      uid = obj.label.to_s
     else
-      cn = obj.title
+      uid = obj.title
     end
-    obj.dn = "cn=#{cn},#{parentdn}"
+    obj.dn = "uniqueIdentifier=#{uid},#{parentdn}"
     attr = {
-      cn: cn,
+      uniqueidentifier: uid,
       objectclass: ["top", objectclass],
     }
     obj.ldapfields.each do |fieldname|
