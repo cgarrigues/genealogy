@@ -732,17 +732,20 @@ class GedcomIndi < GedcomEntry
   def []=(fieldname, value)
     if fieldname == :name
       super 
-      if cn = value.to_s
-        self[:cn] = cn
-      end
-      if first = value.first
-        self[:first] = first
-      end
-      if last = value.last
-        self[:last] = last
-      end
-      if suffix = value.suffix
-        self[:suffix] = suffix
+      unless @cn
+        # If there are more than one name defined, populate with the first one; the others will remain the name objects
+        if cn = value.to_s
+          self[:cn] = cn
+        end
+        if first = value.first
+          self[:first] = first
+        end
+        if last = value.last
+          self[:last] = last
+        end
+        if suffix = value.suffix
+          self[:suffix] = suffix
+        end
       end
     elsif fieldname == :birt
       super
