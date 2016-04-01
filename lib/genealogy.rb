@@ -57,7 +57,9 @@ class User
     }
     obj.ldapfields.each do |fieldname|
       if value = obj.instance_variable_get("@#{fieldname}".to_sym)
-        attr[fieldname] = value
+        unless value == []
+          attr[fieldname] = value
+        end
       end
     end
     unless @ldap.add dn: obj.dn, attributes: attr
@@ -66,8 +68,19 @@ class User
   end
 
   def addattribute(dn, attribute, value)
-    unless @ldap.add_attribute dn, attribute, value
-      raise "Couldn't add #{attribute} #{value.inspect} to #{dn}: #{@ldap.get_operation_result.message}"
+    if value.is_a? GedcomEntry
+      if value.dn
+        unless @ldap.add_attribute dn, attribute, value.dn
+          raise "Couldn't add #{attribute} #{value.inspect} to #{dn}: #{@ldap.get_operation_result.message}"
+        end
+      else
+        puts "Not adding #{attribute} #{value.inspect} to #{dn}"
+
+      end
+    else
+      unless @ldap.add_attribute dn, attribute, value
+        raise "Couldn't add #{attribute} #{value.inspect} to #{dn}: #{@ldap.get_operation_result.message}"
+      end
     end
   end
   
@@ -484,11 +497,11 @@ class GedcomEven < GedcomEntry
   end
 
   def addsource(source)
-    @sources.push source
+    self[:sources] = source
   end
 
   def delsource(source)
-    @sources.delete_if {|i| i == source}
+    delfield :sources, source
   end
 end
 
@@ -496,8 +509,8 @@ class GedcomBirt < GedcomEven
   attr_reader :individual
 
   def initialize(parent: nil, **options)
-    super
     @individual = parent
+    super
   end
 
   def to_s
@@ -621,7 +634,14 @@ class GedcomIndi < GedcomEntry
   attr_accessor :mother
   attr_accessor :father
   attr_multi :events
+  attr_reader :names
   attr_multi :names
+  attr_gedcom :names, :name
+  attr_ldap :names, :namedns
+  attr_reader :sources
+  attr_gedcom :sources, :sour
+  attr_ldap :sources, :sourcedns
+  attr_multi :sources
 
   def initialize(source: nil, **options)
     #puts "#{self.class} #{arg.inspect}"
@@ -679,6 +699,7 @@ class GedcomIndi < GedcomEntry
   end
   
   def addsource(source)
+    self[:sources] = source
     @events.keys.each do |year|
       @events[year].keys.each do |month|
         @events[year][month].keys.each do |day|
@@ -693,6 +714,7 @@ class GedcomIndi < GedcomEntry
   end
 
   def delsource(source)
+    delfield :sources, source
     @events.keys.each do |year|
       @events[year].keys.each do |month|
         @events[year][month].keys.each do |day|
@@ -708,10 +730,10 @@ class GedcomIndi < GedcomEntry
   
   def []=(fieldname, value)
     if fieldname == :birt
-      @birt = value
+      super
       addevent value, nil
     elsif fieldname == :deat
-      @deat = value
+      super
       addevent value, nil
     elsif fieldname == :buri
       addevent value, nil
