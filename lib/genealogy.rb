@@ -71,7 +71,7 @@ class User
   end
 
   def addattribute(dn, attribute, value)
-    if value.is_a? GedcomEntry
+    if value.kind_of? GedcomEntry
       if value.dn
         unless @ldap.add_attribute dn, attribute, value.dn
           raise "Couldn't add #{attribute} #{value.inspect} to #{dn}: #{@ldap.get_operation_result.message}"
@@ -744,7 +744,6 @@ class GedcomIndi < GedcomEntry
   
   def []=(fieldname, value)
     if fieldname == :name
-      super 
       unless @cn
         # If there are more than one name defined, populate with the first one; the others will be findable via the name objects
         if cn = value.to_s
@@ -760,6 +759,7 @@ class GedcomIndi < GedcomEntry
           self[:suffix] = suffix
         end
       end
+      super 
     elsif fieldname == :birt
       super
       addevent value, nil
@@ -805,15 +805,14 @@ class GedcomName < GedcomEntry
   attr_reader :first
   attr_reader :last
   attr_reader :suffix
+  attr_accessor :dn
   
-  def initialize(arg: "", **options)
+  def initialize(arg: "", fieldname: fieldname, parent: nil, **options)
     (first, last, suffix) = arg.split(/\s*\/\s*/)
     $names[last][first][suffix] = self
-    super(first: first, last: last, suffix: suffix, **options)
+    super(fieldname: fieldname, parent: parent, first: first, last: last, suffix: suffix, **options)
     unless arg == ""
       @last = last
-      puts self.inspect
-      puts @user.dn.inspect
       dn = @user.dn
       dns = []
       unless @user.ldap.search(
@@ -896,7 +895,8 @@ class GedcomName < GedcomEntry
           end
         end
       end
-      puts dn.inspect
+      self.dn = dn
+      super(fieldname: fieldname, parent: parent)
     end
   end
 
