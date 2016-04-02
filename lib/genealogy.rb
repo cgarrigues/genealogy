@@ -96,16 +96,6 @@ class GedcomEntry
         instance_variable_set "@#{fieldname}".to_sym, value
       end
     end
-    if ldapentry
-      ldapentry.each do |fieldname, value|
-        fieldname = @@ldaptofield[self.class][fieldname] || fieldname
-        if @@multivaluevariables[self.class].include? fieldname
-          instance_variable_set "@#{fieldname}".to_sym, value
-        else
-          instance_variable_set "@#{fieldname}".to_sym, value[0]
-        end
-      end
-    end
     if user
       @user = user
     end
@@ -126,6 +116,26 @@ class GedcomEntry
     if parent
       @parent = parent
       parent[fieldname] = self
+    end
+    if ldapentry
+      ldapentry.each do |fieldname, value|
+        fieldname = @@ldaptofield[self.class][fieldname] || fieldname
+        if @@multivaluevariables[self.class].include? fieldname
+          instance_variable_set "@#{fieldname}".to_sym, value
+        else
+          instance_variable_set "@#{fieldname}".to_sym, value[0]
+        end
+      end
+    else
+      if @user
+        if @ldapclass
+          if @parent
+            addtoldap @parent.dn
+          else
+            addtoldap
+          end
+        end
+      end
     end
   end
 
@@ -155,7 +165,7 @@ class GedcomEntry
     @@ldaptofield[self][ldapname] = fieldname
   end
   
-  def addtoldap(objectclass, parentdn=@user.dn)
+  def addtoldap(parentdn=@user.dn)
     if @label
       uid = @label.to_s
     else
@@ -164,7 +174,7 @@ class GedcomEntry
     @dn = "uniqueIdentifier=#{uid},#{parentdn}"
     attr = {
       uniqueidentifier: uid,
-      objectclass: ["top", objectclass],
+      objectclass: ["top", @ldapclass],
     }
     ldapfields.each do |fieldname|
       if value = instance_variable_get("@#{fieldname}".to_sym)
@@ -661,8 +671,8 @@ class GedcomIndi < GedcomEntry
     #puts "#{self.class} #{arg.inspect}"
     @names = []
     @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
+    @ldapclass = "gedcomIndi"
     super
-    addtoldap "gedcomIndi", source.dn
   end
 
   def to_s
@@ -949,8 +959,7 @@ class GedcomSour < GedcomEntry
   attr_reader :labels
   attr_reader :references
   attr_ldap :rawdata, :rawdata
-
-  def initialize(arg: nil, filename: nil, parent: nil, source: nil, ldapentry: nil, **options)
+  def initialize(arg: nil, filename: nil, parent: nil, source: nil, **options)
     @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
     @authors = []
     if filename
@@ -963,16 +972,8 @@ class GedcomSour < GedcomEntry
         @title = arg
       end
     end
+    @ldapclass = "gedcomSour"
     super
-    unless ldapentry
-      if @user
-        if @parent
-          addtoldap "gedcomSour", @parent.dn
-        else
-          addtoldap "gedcomSour"
-        end
-      end
-    end
   end
   
   def addhead head
