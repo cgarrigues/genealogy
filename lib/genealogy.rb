@@ -47,34 +47,11 @@ class User
     end
   end
   
-  def addtoldap(obj, objectclass, parentdn=@dn)
-    if obj.label
-      uid = obj.label.to_s
-    else
-      uid = obj.title
-    end
-    obj.dn = "uniqueIdentifier=#{uid},#{parentdn}"
-    attr = {
-      uniqueidentifier: uid,
-      objectclass: ["top", objectclass],
-    }
-    obj.ldapfields.each do |fieldname|
-      if value = obj.instance_variable_get("@#{fieldname}".to_sym)
-        unless value == []
-          attr[fieldname] = value
-        end
-      end
-    end
-    unless @ldap.add dn: obj.dn, attributes: attr
-      raise "Couldn't add #{obj.inspect} to #{self} with attributes #{attr.inspect}: #{@ldap.get_operation_result.message}"
-    end
-  end
-
   def addattribute(dn, attribute, value)
     if value.kind_of? GedcomEntry
       if value.dn
         unless @ldap.add_attribute dn, attribute, value.dn
-          raise "Couldn't add #{attribute} #{value.inspect} to #{dn}: #{@ldap.get_operation_result.message}"
+          raise "Couldn't add #{attribute} #{value.dn} to #{dn}: #{@ldap.get_operation_result.message}"
         end
       end
     else
@@ -178,6 +155,29 @@ class GedcomEntry
     @@ldaptofield[self][ldapname] = fieldname
   end
   
+  def addtoldap(objectclass, parentdn=@user.dn)
+    if @label
+      uid = @label.to_s
+    else
+      uid = @title
+    end
+    @dn = "uniqueIdentifier=#{uid},#{parentdn}"
+    attr = {
+      uniqueidentifier: uid,
+      objectclass: ["top", objectclass],
+    }
+    ldapfields.each do |fieldname|
+      if value = instance_variable_get("@#{fieldname}".to_sym)
+        unless value == []
+          attr[fieldname] = value
+        end
+      end
+    end
+    unless @user.ldap.add dn: @dn, attributes: attr
+      raise "Couldn't add #{self.inspect} at #{@dn} with attributes #{attr.inspect}: #{@user.ldap.get_operation_result.message}"
+    end
+  end
+
   def inspect
     if @baddata
       "#<#{self.class}: #{to_s} :BAD>"
@@ -662,7 +662,7 @@ class GedcomIndi < GedcomEntry
     @names = []
     @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
     super
-    @user.addtoldap self, "gedcomIndi", source.dn
+    addtoldap "gedcomIndi", source.dn
   end
 
   def to_s
@@ -967,9 +967,9 @@ class GedcomSour < GedcomEntry
     unless ldapentry
       if @user
         if @parent
-          @user.addtoldap self, "gedcomSour", @parent.dn
+          addtoldap "gedcomSour", @parent.dn
         else
-          @user.addtoldap self, "gedcomSour"
+          addtoldap "gedcomSour"
         end
       end
     end
