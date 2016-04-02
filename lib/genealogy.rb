@@ -87,35 +87,26 @@ class GedcomEntry
   attr_reader :baddata
   attr_accessor :dn
 
-  def initialize(fieldname: "", label: nil, arg: "", parent: nil, user: nil, source: nil, ldapentry: nil, **options)
+  def initialize(source: nil, ldapentry: nil, **options)
     options.each do |fieldname, value|
-      fieldname = @@ldaptofield[self.class][fieldname] || fieldname
-      if @@multivaluevariables[self.class].include? fieldname
-        instance_variable_set "@#{fieldname}".to_sym, [value]
-      else
-        instance_variable_set "@#{fieldname}".to_sym, value
+      if value
+        fieldname = @@ldaptofield[self.class][fieldname] || fieldname
+        if @@multivaluevariables[self.class].include? fieldname
+          instance_variable_set "@#{fieldname}".to_sym, [value]
+        else
+          instance_variable_set "@#{fieldname}".to_sym, value
+        end
       end
     end
-    if user
-      @user = user
-    end
-    if label
-      @label = label
+    if @label
       source.labels[@label] = self
       source.references[@label].each do |ref|
         ref.parent.delfield ref.fieldname, ref
         ref.parent[ref.fieldname] = self
       end
     end
-    if fieldname
-      @fieldname = fieldname
-    end
-    if arg
-      @arg = arg
-    end
-    if parent
-      @parent = parent
-      parent[fieldname] = self
+    if @parent
+      @parent[fieldname] = self
     end
     if ldapentry
       ldapentry.each do |fieldname, value|
