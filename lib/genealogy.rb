@@ -87,7 +87,7 @@ class GedcomEntry
   attr_reader :baddata
   attr_accessor :dn
 
-  def initialize(source: nil, ldapentry: nil, **options)
+  def initialize(ldapentry: nil, **options)
     options.each do |fieldname, value|
       if value
         fieldname = @@ldaptofield[self.class][fieldname] || fieldname
@@ -99,8 +99,8 @@ class GedcomEntry
       end
     end
     if @label
-      source.labels[@label] = self
-      source.references[@label].each do |ref|
+      @source.labels[@label] = self
+      @source.references[@label].each do |ref|
         ref.parent.delfield ref.fieldname, ref
         ref.parent[ref.fieldname] = self
       end
@@ -120,11 +120,7 @@ class GedcomEntry
     else
       if @user
         if @ldapclass
-          if @parent
-            addtoldap @parent.dn
-          else
-            addtoldap
-          end
+          addtoldap
         end
       end
     end
@@ -156,7 +152,14 @@ class GedcomEntry
     @@ldaptofield[self][ldapname] = fieldname
   end
   
-  def addtoldap(parentdn=@user.dn)
+  def addtoldap
+    if @parent
+      parentdn = @parent.dn
+    elsif @source
+      parentdn = @source.dn
+    else
+      parentdn = @user.dn
+    end
     if @label
       uid = @label.to_s
     else
@@ -815,7 +818,7 @@ class GedcomName < GedcomEntry
     super(fieldname: fieldname, parent: parent, first: first, last: last, suffix: suffix, **options)
   end
   
-  def addtoldap(dn)
+  def addtoldap
     dn=@user.dn
     if @last
       clean = @last.gsub(/[^A-Za-z0-9]+/, '')
