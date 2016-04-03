@@ -815,84 +815,58 @@ class GedcomName < GedcomEntry
     unless arg == ""
       @last = last
       dn = @user.dn
-      dns = []
-      unless @user.ldap.search(
-        base: dn,
-        scope: Net::LDAP::SearchScope_SingleLevel,
-        filter: (Net::LDAP::Filter.eq("objectclass", "gedcomName") & Net::LDAP::Filter.eq("sn", last)),
-        return_result: false,
-      ) do |entry|
-          dns.push entry.dn
-        end
-        raise "Couldn't search #{dn} for names: #{@ldap.get_operation_result.message}"
+
+      clean = last.gsub(/[^A-Za-z0-9]+/, '')
+      if clean == ''
+        clean = 'unknown'
       end
+      dn = "sn=#{clean},#{dn}"
       attr = {
         sn: last,
         objectclass: ["top", "gedcomName"],
       }
-      if dns == []
-        clean = last.gsub(/[^A-Za-z0-9]+/, '')
-        if clean == ''
-          clean = 'unknown'
-        end
-        dn = "sn=#{clean},#{dn}"
+      unless @user.ldap.search(
+        base: dn,
+        scope: Net::LDAP::SearchScope_BaseObject,
+        return_result: false,
+      )
         unless @user.ldap.add dn: dn, attributes: attr
           raise "Couldn't add sn #{last} at #{dn} with attributes #{attr.inspect}: #{@user.ldap.get_operation_result.message}"
         end
-      else
-        dn = dns[0]
       end
 
       if first
-        dns = []
+        clean = first.gsub(/[^A-Za-z0-9]+/, '')
+        if clean == ''
+          clean = 'unknown'
+        end
+        dn = "givenName=#{clean},#{dn}"
         unless @user.ldap.search(
           base: dn,
-          scope: Net::LDAP::SearchScope_SingleLevel,
-          filter: (Net::LDAP::Filter.eq("objectclass", "gedcomName") & Net::LDAP::Filter.eq("givenName", first)),
+          scope: Net::LDAP::SearchScope_BaseObject,
           return_result: false,
-        ) do |entry|
-            dns.push entry.dn
-          end
-          raise "Couldn't search #{dn} for names: #{@ldap.get_operation_result.message}"
-        end
-        attr[:givenname] = first
-        if dns == []
-          clean = first.gsub(/[^A-Za-z0-9]+/, '')
-          if clean == ''
-            clean = 'unknown'
-          end
-          dn = "givenname=#{clean},#{dn}"
+        ) 
+          attr[:givenname] = first
           unless @user.ldap.add dn: dn, attributes: attr
             raise "Couldn't add givenname #{first} at #{dn} with attributes #{attr.inspect}: #{@user.ldap.get_operation_result.message}"
           end
-        else
-          dn = dns[0]
         end
         
         if suffix
-          dns = []
+          clean = suffix.gsub(/[^A-Za-z0-9]+/, '')
+          if clean == ''
+            clean = 'unknown'
+          end
+          dn = "initials=#{clean},#{dn}"
           unless @user.ldap.search(
             base: dn,
-            scope: Net::LDAP::SearchScope_SingleLevel,
-            filter: (Net::LDAP::Filter.eq("objectclass", "gedcomName") & Net::LDAP::Filter.eq("initials", suffix)),
+            scope: Net::LDAP::SearchScope_BaseObject,
             return_result: false,
-          ) do |entry|
-              dns.push entry.dn
-            end
-            raise "Couldn't search #{dn} for names: #{@ldap.get_operation_result.message}"
-          end
-          attr[:initials] = suffix
-          if dns == []
-            clean = suffix.gsub(/[^A-Za-z0-9]+/, '')
-            if clean == ''
-              clean = 'unknown'
-            end
-            dn = "initials=#{clean},#{dn}"
+          ) 
+            attr[:initials] = suffix
             unless @user.ldap.add dn: dn, attributes: attr
               raise "Couldn't add initials #{suffix} at #{dn} with attributes #{attr.inspect}: #{@user.ldap.get_operation_result.message}"
             end
-          else
-            dn = dns[0]
           end
         end
       end
