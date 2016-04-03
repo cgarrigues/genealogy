@@ -811,18 +811,20 @@ class GedcomName < GedcomEntry
   def initialize(arg: "", fieldname: fieldname, parent: nil, **options)
     (first, last, suffix) = arg.split(/\s*\/\s*/)
     $names[last][first][suffix] = self
+    @ldapclass = "gedcomName"
     super(fieldname: fieldname, parent: parent, first: first, last: last, suffix: suffix, **options)
-    unless arg == ""
-      @last = last
-      dn = @user.dn
-
-      clean = last.gsub(/[^A-Za-z0-9]+/, '')
+  end
+  
+  def addtoldap(dn)
+    dn=@user.dn
+    if @last
+      clean = @last.gsub(/[^A-Za-z0-9]+/, '')
       if clean == ''
         clean = 'unknown'
       end
       dn = "sn=#{clean},#{dn}"
       attr = {
-        sn: last,
+        sn: @last,
         objectclass: ["top", "gedcomName"],
       }
       unless @user.ldap.search(
@@ -831,12 +833,12 @@ class GedcomName < GedcomEntry
         return_result: false,
       )
         unless @user.ldap.add dn: dn, attributes: attr
-          raise "Couldn't add sn #{last} at #{dn} with attributes #{attr.inspect}: #{@user.ldap.get_operation_result.message}"
+          raise "Couldn't add sn #{@last} at #{dn} with attributes #{attr.inspect}: #{@user.ldap.get_operation_result.message}"
         end
       end
-
-      if first
-        clean = first.gsub(/[^A-Za-z0-9]+/, '')
+      
+      if @first
+        clean = @first.gsub(/[^A-Za-z0-9]+/, '')
         if clean == ''
           clean = 'unknown'
         end
@@ -845,15 +847,15 @@ class GedcomName < GedcomEntry
           base: dn,
           scope: Net::LDAP::SearchScope_BaseObject,
           return_result: false,
-        ) 
-          attr[:givenname] = first
+        )
+          attr[:givenname] = @first
           unless @user.ldap.add dn: dn, attributes: attr
-            raise "Couldn't add givenname #{first} at #{dn} with attributes #{attr.inspect}: #{@user.ldap.get_operation_result.message}"
+            raise "Couldn't add givenname #{@first} at #{dn} with attributes #{attr.inspect}: #{@user.ldap.get_operation_result.message}"
           end
         end
         
-        if suffix
-          clean = suffix.gsub(/[^A-Za-z0-9]+/, '')
+        if @suffix
+          clean = @suffix.gsub(/[^A-Za-z0-9]+/, '')
           if clean == ''
             clean = 'unknown'
           end
@@ -862,16 +864,15 @@ class GedcomName < GedcomEntry
             base: dn,
             scope: Net::LDAP::SearchScope_BaseObject,
             return_result: false,
-          ) 
+          )
             attr[:initials] = suffix
             unless @user.ldap.add dn: dn, attributes: attr
-              raise "Couldn't add initials #{suffix} at #{dn} with attributes #{attr.inspect}: #{@user.ldap.get_operation_result.message}"
+              raise "Couldn't add initials #{@suffix} at #{dn} with attributes #{attr.inspect}: #{@user.ldap.get_operation_result.message}"
             end
           end
         end
+        self.dn = dn
       end
-      self.dn = dn
-      super(fieldname: fieldname, parent: parent)
     end
   end
 
