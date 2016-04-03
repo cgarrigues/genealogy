@@ -800,7 +800,7 @@ end
 
 class GedcomOffi < GedcomEntry
   def initialize(arg: "", parent: nil, **options)
-    (@first, @last, @suffix) = arg.split(/\s*\/\s*/)
+    (@first, @last, @suffix) = arg.split(/\s*\/[\s,]*/)
     parent[fieldname] = $names[@last][@first][@suffix]
   end
 end
@@ -812,7 +812,7 @@ class GedcomName < GedcomEntry
   attr_accessor :dn
   
   def initialize(arg: "", fieldname: fieldname, parent: nil, **options)
-    (first, last, suffix) = arg.split(/\s*\/\s*/)
+    (first, last, suffix) = arg.split(/\s*\/[\s*,]*/)
     $names[last][first][suffix] = self
     @ldapclass = "gedcomName"
     super(fieldname: fieldname, parent: parent, first: first, last: last, suffix: suffix, **options)
