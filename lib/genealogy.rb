@@ -838,6 +838,22 @@ class GedcomName < GedcomEntry
       end
       
       if @first
+        firstinitial = @first[0]
+        
+        unless firstinitial == @first
+          dn = "givenName=#{firstinitial},#{dn}"
+          unless @user.ldap.search(
+            base: dn,
+            scope: Net::LDAP::SearchScope_BaseObject,
+            return_result: false,
+          )
+            attr[:givenname] = firstinitial
+            unless @user.ldap.add dn: dn, attributes: attr
+              raise "Couldn't add first initial #{firstinitial} at #{dn} with attributes #{attr.inspect}: #{@user.ldap.get_operation_result.message}"
+            end
+          end
+        end
+
         clean = @first.gsub(/[^A-Za-z0-9]+/, '')
         if clean == ''
           clean = 'unknown'
