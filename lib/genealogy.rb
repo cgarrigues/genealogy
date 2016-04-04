@@ -172,7 +172,7 @@ class GedcomEntry
     }
     ldapfields.each do |fieldname|
       if value = instance_variable_get("@#{fieldname}".to_sym)
-        unless value == []
+        unless value == [] or value == ""
           attr[fieldname] = value
         end
       end
@@ -234,9 +234,10 @@ class GedcomHead < GedcomEntry
 
   def initialize(source: nil, **options)
     if source
-      @parent = source
+      super(source: source, parent: source, **options)
+    else
+      super(**options)
     end
-    super
   end
   
   def dn
@@ -262,9 +263,8 @@ class GedcomAddr < GedcomEntry
   attr_gedcom :address, :addr
 
   def initialize(arg: "", **options)
-    @address = arg
     @phones = []
-    super
+    super(address: arg, **options)
   end
   
   def []=(fieldname, child)
@@ -277,7 +277,7 @@ class GedcomAddr < GedcomEntry
 end
 
 class GedcomString < GedcomEntry
-  def initialize(fieldname: "", arg: "", parent: nil,**options)
+  def initialize(fieldname: "", arg: "", parent: nil, **options)
     parent[fieldname] = arg
   end
 end
@@ -332,43 +332,44 @@ class GedcomDate < GedcomEntry
   
   def initialize(arg: "", parent: nil, **options)
     #puts "#{self.class} #{arg.inspect}"
-    @raw = arg
+    @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
+    raw = arg
     args = arg.split(/\s+/)
-    @relative = 0
+    relative = 0
     if args[0] == 'AFT'
-      @relative = +10
+      relative = +10
       args.shift
     elsif args[0] == 'BEF'
-      @relative = -10
+      relative = -10
       args.shift
     elsif args[0] == 'ABT'
-      @relative = +1
+      relative = +1
       args.shift
     elsif args[0] == 'BET'
-      @relative = +2
+      relative = +2
       args.shift
       args = args[0..(args.index("AND")-1)]
     end
-    @year = args.pop
-    if (@year =~ /[^\d]/)
-      @baddata = true
-      @year = Integer(@year[/^\d+/]||0)
+    baddata = false
+    year = args.pop
+    if (year =~ /[^\d]/)
+      baddata = true
+      year = Integer(year[/^\d+/]||0)
     else
-      @year = Integer(@year)
+      year = Integer(year)
     end
-    if @month = args.pop
-      unless @month = Monthmap[@month]
-        @baddata = true
-        @month = 0
+    if month = args.pop
+      unless month = Monthmap[month]
+        baddata = true
+        month = 0
       end
     else
-      @month = 0
+      month = 0
     end
-    @day = args.pop
-    @day = Integer(@day || 0)
-    @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
+    day = args.pop
+    day = Integer(day || 0)
     addevent parent
-    super
+    super(raw: raw, year: year, month: month, day: day, relative: relative, parent: parent, baddata: baddata, **options)
     if @parent.parent
       @parent.parent.delevent parent, nil
       @parent.parent.addevent parent, self
@@ -487,7 +488,7 @@ class GedcomEven < GedcomEntry
   attr_gedcom :type, :description
 
   def initialize(source: nil, **options)
-    super
+    super(**options)
     @sources = []
     if source
       addsource source
@@ -523,8 +524,7 @@ class GedcomBirt < GedcomEven
   attr_reader :individual
 
   def initialize(parent: nil, **options)
-    @individual = parent
-    super
+    super(individual: parent, **options)
   end
 
   def to_s
@@ -541,8 +541,7 @@ class GedcomDeat < GedcomEven
   attr_gedcom :cause, :caus
 
   def initialize(parent: nil, **options)
-    super
-    @individual = parent
+    super(individual: parent, **options)
   end
 
   def to_s
@@ -558,8 +557,7 @@ class GedcomBuri < GedcomEven
   attr_reader :individual
 
   def initialize(parent: nil, **options)
-    super
-    @individual = parent
+    super(individual: parent, **options)
   end
 
   def to_s
@@ -595,9 +593,8 @@ class GedcomAdop < GedcomEven
   attr_reader :parents
 
   def initialize(parent: nil, **options)
-    super
-    @individual = parent
     @parents = []
+    super(individual: parent, **options)
   end
 
   def []=(fieldname, value)
@@ -944,21 +941,16 @@ class GedcomSour < GedcomEntry
   attr_reader :labels
   attr_reader :references
   attr_ldap :rawdata, :rawdata
+
   def initialize(arg: nil, filename: nil, parent: nil, source: nil, **options)
     @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
     @authors = []
-    if filename
-      @filename = filename
-      @title = filename
-      @rawdata = File.read filename
-    else
-      @parent = source
-      unless arg == ""
-        @title = arg
-      end
-    end
     @ldapclass = "gedcomSour"
-    super
+    if filename
+      super(filename: filename, title: filename, source: source, rawdata: (File.read filename), **options)
+    else
+      super(parent: source, source: source, title: arg, **options)
+    end
   end
   
   def addhead head
@@ -1056,7 +1048,7 @@ class GedcomNote < GedcomEntry
   attr_reader :note
 
   def initialize(arg: "", **options)
-    @note = arg
+    super(note: arg, **options)
   end
 
   def []=(fieldname, value)
