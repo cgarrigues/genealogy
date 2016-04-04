@@ -760,7 +760,7 @@ class GedcomIndi < GedcomEntry
           self[:suffix] = suffix
         end
       end
-      super 
+      super
     elsif fieldname == :birt
       super
       addevent value, nil
@@ -881,7 +881,7 @@ class GedcomName < GedcomEntry
             scope: Net::LDAP::SearchScope_BaseObject,
             return_result: false,
           )
-            attr[:initials] = suffix
+            attr[:initials] = @suffix
             unless @user.ldap.add dn: dn, attributes: attr
               raise "Couldn't add initials #{@suffix} at #{dn} with attributes #{attr.inspect}: #{@user.ldap.get_operation_result.message}"
             end
@@ -889,6 +889,18 @@ class GedcomName < GedcomEntry
         end
       end
       @dn = dn
+
+      uid = parent.label.to_s
+      aliasdn = "uniqueidentifier=#{uid},#{dn}"
+      attr = {
+        uniqueidentifier: uid,
+        objectclass: ["alias", "extensibleObject"],
+        aliasedobjectname: parent.dn,
+      }
+      #puts "Adding alias to #{parent.dn} under #{dn} as #{aliasdn} with attributes: #{attr.inspect}"
+      unless @user.ldap.add dn: aliasdn, attributes: attr
+        raise "Couldn't add alias #{aliasdn} with attributes #{attr.inspect}: #{@user.ldap.get_operation_result.message}"
+      end
     end
   end
 
