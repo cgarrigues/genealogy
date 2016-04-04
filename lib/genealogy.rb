@@ -105,9 +105,6 @@ class GedcomEntry
         ref.parent[ref.fieldname] = self
       end
     end
-    if @parent
-      @parent[fieldname] = self
-    end
     if ldapentry
       ldapentry.each do |fieldname, value|
         fieldname = @@ldaptofield[self.class][fieldname] || fieldname
@@ -123,6 +120,9 @@ class GedcomEntry
           addtoldap
         end
       end
+    end
+    if @parent
+      @parent[fieldname] = self
     end
   end
 
@@ -887,8 +887,8 @@ class GedcomName < GedcomEntry
             end
           end
         end
-        self.dn = dn
       end
+      @dn = dn
     end
   end
 
