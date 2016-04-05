@@ -77,6 +77,26 @@ class User
     end
     @sources
   end
+
+  def findname(first: '', last: '')
+    firstinit = first[0]
+    if firstinit == first
+      dn = "givenName=#{first},sn=#{last},#{@dn}"
+    else
+      dn = "givenName=#{first},givenname=#{firstinit},sn=#{last},#{@dn}"
+    end
+    unless @ldap.search(
+      base: dn,
+      filter: Net::LDAP::Filter.eq("objectclass", "gedcomIndi"),
+      deref: Net::LDAP::DerefAliases_Search,
+      return_result: false,
+    ) do |entry|
+        indi = GedcomIndi.new ldapentry: entry, user: self
+        puts indi.inspect
+      end
+      raise "Couldn't search #{@dn} for sources: #{@ldap.get_operation_result.message}"
+    end
+  end
 end
 
 class GedcomEntry
@@ -653,7 +673,8 @@ class GedcomIndi < GedcomEntry
   attr_gedcom :sources, :sour
   attr_ldap :sources, :sourcedns
   attr_multi :sources
-  attr_ldap :cn, :cn
+  attr_reader :fullname
+  attr_ldap :fullname, :cn
   attr_ldap :first, :givenname
   attr_ldap :last, :sn
   attr_ldap :suffix, :initials
@@ -681,7 +702,7 @@ class GedcomIndi < GedcomEntry
     else
       deathdate = ''
     end
-    "#{@names[0]} #{birthdate} - #{deathdate}"
+    "#{@fullname} #{birthdate} - #{deathdate}"
   end
 
   def addevent(event, date = event.date)

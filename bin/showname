@@ -1,0 +1,13 @@
+#!/usr/bin/ruby
+# coding: utf-8
+
+$LOAD_PATH.unshift("#{File.dirname(__FILE__)}/../lib")
+require 'genealogy'
+
+name = ARGV[0]
+(last, first) = name.split /\s*,\s*/
+
+user = User.new username: "admin", password: "4zY!4*s#bPMO"
+user.openldap do
+  puts user.findname(first: first, last:last).inspect
+end
