@@ -187,24 +187,39 @@ class GedcomEntry
     end
     if @label
       uid = @label.to_s
-    else
+    elsif @title
       uid = @title
+    else
+      puts "Don't have a UID yet for #{self.inspect}"
+      #puts parentdn.inspect
+      @noldapobject = true
     end
-    @dn = "uniqueIdentifier=#{uid},#{parentdn}"
-    attr = {
-      uniqueidentifier: uid,
-      objectclass: ["top", @@classtoldapclass[self.class].to_s],
-    }
-    ldapfields.each do |fieldname|
-      ldapfieldname = @@fieldtoldap[self.class][fieldname] || fieldname
-      if value = instance_variable_get("@#{fieldname}".to_sym)
-        unless value == [] or value == ""
-          attr[ldapfieldname] = value
+    if uid
+      @dn = "uniqueIdentifier=#{uid},#{parentdn}"
+      attr = {
+        uniqueidentifier: uid,
+        objectclass: ["top", @@classtoldapclass[self.class].to_s],
+      }
+      if ldapsuperclass = @@classtoldapclass[self.class.superclass]
+        attr[:objectclass].push ldapsuperclass.to_s
+      end
+      ldapfields.each do |fieldname|
+        ldapfieldname = @@fieldtoldap[self.class][fieldname] || fieldname
+        if value = instance_variable_get("@#{fieldname}".to_sym)
+          unless value == [] or value == ""
+            if value.kind_of? GedcomEntry
+              if value.dn
+                attr[ldapfieldname] = value.dn
+            end
+            else
+              attr[ldapfieldname] = value
+            end
+          end
         end
       end
-    end
-    unless @user.ldap.add dn: @dn, attributes: attr
-      raise "Couldn't add #{self.inspect} at #{@dn} with attributes #{attr.inspect}: #{@user.ldap.get_operation_result.message}"
+      unless @user.ldap.add dn: @dn, attributes: attr
+        raise "Couldn't add #{self.inspect} at #{@dn} with attributes #{attr.inspect}: #{@user.ldap.get_operation_result.message}"
+      end
     end
   end
 
@@ -229,7 +244,11 @@ class GedcomEntry
     end
     if @user
       if fieldname = @@fieldtoldap[self.class][fieldname]
-        @user.addattribute @dn, fieldname, value
+        if @noldapobject
+          puts "Can't add #{fieldname.inspect} #{value.inspect} to LDAP for #{self.inspect} because the object doesn't exist yet"
+        else
+          @user.addattribute @dn, fieldname, value
+        end
       end
     end
   end
@@ -507,11 +526,16 @@ class GedcomPlac < GedcomEntry
 end
 
 class GedcomEven < GedcomEntry
+  ldap_class :gedcomeven
   attr_reader :date
+  attr_ldap :date, :gedcomdate
   attr_gedcom :place, :plac
+  attr_ldap :place, :gedcom
   attr_reader :description
+  attr_gedcom :description, :type
+  attr_ldap :description, :description
   attr_reader :sources
-  attr_gedcom :type, :description
+  attr_ldap :sources, :sourcedns
 
   def initialize(source: nil, **options)
     super(**options)
@@ -547,10 +571,12 @@ class GedcomEven < GedcomEntry
 end
 
 class GedcomBirt < GedcomEven
+  ldap_class :gedcombirt
   attr_reader :individual
+  attr_ldap :individual, :individualdn
 
   def initialize(parent: nil, **options)
-    super(individual: parent, **options)
+    super(individual: parent, parent: parent, title: "Birth of #{parent.fullname.gsub(/"/, '\"')}", **options)
   end
 
   def to_s
@@ -667,6 +693,7 @@ class GedcomIndi < GedcomEntry
   ldap_class :gedcomindi
   attr_reader :gender, :sex
   attr_gedcom :birth, :birt
+  attr_ldap :birth, :birthdn
   attr_reader :baptism
   attr_gedcom :death, :deat
   attr_accessor :mother

@@ -116,6 +116,29 @@ attributetype ( 1.3.6.1.4.1.19106.1.1.15
         EQUALITY distinguishedNameMatch
         SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
         )
+
+attributetype ( 1.3.6.1.4.1.19106.1.1.16
+	NAME 'gedcomDate'
+	DESC 'date of the event'
+        EQUALITY caseIgnoreIA5Match
+        SUBSTR caseIgnoreIA5SubstringsMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+        )
+
+attributetype ( 1.3.6.1.4.1.19106.1.1.17
+	NAME 'gedcomPlace'
+	DESC 'date of the event'
+        EQUALITY caseIgnoreIA5Match
+        SUBSTR caseIgnoreIA5SubstringsMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+        )
+
+attributetype ( 1.3.6.1.4.1.19106.1.1.18
+	NAME 'individualDN'
+	DESC 'DNs of individual'
+        EQUALITY distinguishedNameMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
+        )
 	
 objectclass ( 1.3.6.1.4.1.19106.1.2.1
 	NAME 'gedcomSour'
@@ -139,5 +162,20 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.3
 	STRUCTURAL
 	MUST (objectClass $ sn )
 	MAY ( givenName $ sn $ initials )
+	)
+
+objectclass ( 1.3.6.1.4.1.19106.1.2.4
+	NAME 'gedcomEven'
+	DESC 'a gedcom event'
+	STRUCTURAL
+	MUST (objectClass $ uniqueIdentifier )
+	MAY ( gedcomDate $ gedcomPlace $ description $sourceDNs )
+	)
+
+objectclass ( 1.3.6.1.4.1.19106.1.2.5
+	NAME 'gedcomBirt'
+	DESC 'a gedcom birth'
+	AUXILIARY
+	MUST (individualDN)
 	)
 
