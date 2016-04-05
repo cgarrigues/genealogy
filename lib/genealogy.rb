@@ -107,6 +107,29 @@ class GedcomEntry
   attr_reader :baddata
   attr_accessor :dn
 
+  @@multivaluevariables = Hash.new { |hash, key| hash[key] = Set.new}
+  @@gedcomtofield = Hash.new { |hash, key| hash[key] = Hash.new}
+  @@fieldtoldap = Hash.new { |hash, key| hash[key] = Hash.new}
+  @@ldaptofield = Hash.new { |hash, key| hash[key] = Hash.new}
+  @@classtoldapclass = Hash.new
+
+  def self.attr_multi(fieldname)
+    @@multivaluevariables[self].add fieldname
+  end
+
+  def self.attr_gedcom(fieldname, gedcomname)
+    @@gedcomtofield[self][gedcomname] = fieldname
+  end
+  
+  def self.attr_ldap(fieldname, ldapname)
+    @@fieldtoldap[self][fieldname] = ldapname
+    @@ldaptofield[self][ldapname] = fieldname
+  end
+
+  def self.ldap_class(ldapclass)
+    @@classtoldapclass[self] = ldapclass
+  end
+
   def initialize(ldapentry: nil, **options)
     options.each do |fieldname, value|
       if value
@@ -136,7 +159,7 @@ class GedcomEntry
       end
     else
       if @user
-        if @ldapclass
+        if @@classtoldapclass[self.class]
           addtoldap
         end
       end
@@ -150,28 +173,10 @@ class GedcomEntry
     "#{@label} #{@fieldname} #{arg}"
   end
 
-  @@multivaluevariables = Hash.new { |hash, key| hash[key] = Set.new}
-  @@gedcomtofield = Hash.new { |hash, key| hash[key] = Hash.new}
-  @@fieldtoldap = Hash.new { |hash, key| hash[key] = Hash.new}
-  @@ldaptofield = Hash.new { |hash, key| hash[key] = Hash.new}
-
   def ldapfields
     @@fieldtoldap[self.class].keys
   end
 
-  def self.attr_multi(fieldname)
-    @@multivaluevariables[self].add fieldname
-  end
-
-  def self.attr_gedcom(fieldname, gedcomname)
-    @@gedcomtofield[self][gedcomname] = fieldname
-  end
-  
-  def self.attr_ldap(fieldname, ldapname)
-    @@fieldtoldap[self][fieldname] = ldapname
-    @@ldaptofield[self][ldapname] = fieldname
-  end
-  
   def addtoldap
     if @parent
       parentdn = @parent.dn
@@ -188,12 +193,13 @@ class GedcomEntry
     @dn = "uniqueIdentifier=#{uid},#{parentdn}"
     attr = {
       uniqueidentifier: uid,
-      objectclass: ["top", @ldapclass],
+      objectclass: ["top", @@classtoldapclass[self.class].to_s],
     }
     ldapfields.each do |fieldname|
+      ldapfieldname = @@fieldtoldap[self.class][fieldname] || fieldname
       if value = instance_variable_get("@#{fieldname}".to_sym)
         unless value == [] or value == ""
-          attr[fieldname] = value
+          attr[ldapfieldname] = value
         end
       end
     end
@@ -658,6 +664,7 @@ class GedcomBapm < GedcomEven
 end
 
 class GedcomIndi < GedcomEntry
+  ldap_class :gedcomindi
   attr_reader :gender, :sex
   attr_gedcom :birth, :birt
   attr_reader :baptism
@@ -683,7 +690,6 @@ class GedcomIndi < GedcomEntry
     #puts "#{self.class} #{arg.inspect}"
     @names = []
     @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
-    @ldapclass = "gedcomIndi"
     super
   end
 
@@ -766,10 +772,10 @@ class GedcomIndi < GedcomEntry
   
   def []=(fieldname, value)
     if fieldname == :name
-      unless @cn
+      unless @fullname
         # If there are more than one name defined, populate with the first one; the others will be findable via the name objects
-        if cn = value.to_s
-          self[:cn] = cn
+        if fullname = value.to_s
+          self[:fullname] = fullname
         end
         if first = value.first
           self[:first] = first
@@ -824,6 +830,7 @@ class GedcomOffi < GedcomEntry
 end
 
 class GedcomName < GedcomEntry
+  ldap_class :gedcomname
   attr_reader :first
   attr_reader :last
   attr_reader :suffix
@@ -832,7 +839,6 @@ class GedcomName < GedcomEntry
   def initialize(arg: "", fieldname: fieldname, parent: nil, **options)
     (first, last, suffix) = arg.split(/\s*\/[\s*,]*/)
     $names[last][first][suffix] = self
-    @ldapclass = "gedcomName"
     super(fieldname: fieldname, parent: parent, first: first, last: last, suffix: suffix, **options)
   end
   
@@ -955,6 +961,7 @@ class GedcomType < GedcomString
 end
 
 class GedcomSour < GedcomEntry
+  ldap_class :gedcomsour
   attr_reader :version
   attr_gedcom :version, :vers
   attr_ldap :version, :version
@@ -978,7 +985,6 @@ class GedcomSour < GedcomEntry
   def initialize(arg: nil, filename: nil, parent: nil, source: nil, **options)
     @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
     @authors = []
-    @ldapclass = "gedcomSour"
     if filename
       super(filename: filename, title: filename, source: source, rawdata: (File.read filename), **options)
     else
