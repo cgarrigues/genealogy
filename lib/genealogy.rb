@@ -872,7 +872,7 @@ class GedcomName < GedcomEntry
   def addtoldap
     dn=@user.dn
     if @last
-      clean = @last.gsub(/[^A-Za-z0-9]+/, '')
+      clean = @last.gsub(/"/, '\"')
       if clean == ''
         clean = 'unknown'
       end
@@ -908,7 +908,7 @@ class GedcomName < GedcomEntry
           end
         end
 
-        clean = @first.gsub(/[^A-Za-z0-9]+/, '')
+        clean = @first.gsub(/"/, '\"')
         if clean == ''
           clean = 'unknown'
         end
@@ -925,7 +925,7 @@ class GedcomName < GedcomEntry
         end
         
         if @suffix
-          clean = @suffix.gsub(/[^A-Za-z0-9]+/, '')
+          clean = @suffix.gsub(/"/, '\"')
           if clean == ''
             clean = 'unknown'
           end
