@@ -168,8 +168,8 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.4
 	NAME 'gedcomEven'
 	DESC 'a gedcom event'
 	STRUCTURAL
-	MUST (objectClass $ uniqueIdentifier )
-	MAY ( gedcomDate $ gedcomPlace $ description $sourceDNs )
+	MUST (objectClass $ description)
+	MAY ( gedcomDate $ gedcomPlace $ sourceDNs )
 	)
 
 objectclass ( 1.3.6.1.4.1.19106.1.2.5

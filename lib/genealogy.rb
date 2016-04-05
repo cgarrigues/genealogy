@@ -177,14 +177,7 @@ class GedcomEntry
     @@fieldtoldap[self.class].keys
   end
 
-  def addtoldap
-    if @parent
-      parentdn = @parent.dn
-    elsif @source
-      parentdn = @source.dn
-    else
-      parentdn = @user.dn
-    end
+  def rdn
     if @label
       uid = @label.to_s
     elsif @title
@@ -194,12 +187,24 @@ class GedcomEntry
       #puts parentdn.inspect
       @noldapobject = true
     end
-    if uid
-      @dn = "uniqueIdentifier=#{uid},#{parentdn}"
-      attr = {
-        uniqueidentifier: uid,
-        objectclass: ["top", @@classtoldapclass[self.class].to_s],
-      }
+    [:uniqueidentifier, uid]
+  end
+  
+  def addtoldap
+    if @parent
+      parentdn = @parent.dn
+    elsif @source
+      parentdn = @source.dn
+    else
+      parentdn = @user.dn
+    end
+    
+    (rdnfield, rdnvalue) = self.rdn
+    unless @noldapobject
+      @dn = "#{rdnfield}=#{rdnvalue},#{parentdn}"
+      attr = {}
+      attr[:objectclass] = ["top", @@classtoldapclass[self.class].to_s]
+      attr[rdnfield] = rdnvalue
       if ldapsuperclass = @@classtoldapclass[self.class.superclass]
         attr[:objectclass].push ldapsuperclass.to_s
       end
@@ -568,6 +573,14 @@ class GedcomEven < GedcomEntry
   def delsource(source)
     delfield :sources, source
   end
+
+  def rdn
+    if @description
+      [:description, @description]
+    else
+      @noldapobject = true
+    end
+  end
 end
 
 class GedcomBirt < GedcomEven
@@ -576,7 +589,7 @@ class GedcomBirt < GedcomEven
   attr_ldap :individual, :individualdn
 
   def initialize(parent: nil, **options)
-    super(individual: parent, parent: parent, title: "Birth of #{parent.fullname.gsub(/"/, '\"')}", **options)
+    super(individual: parent, parent: parent, description: "Birth of #{parent.fullname.gsub(/"/, '\"')}", **options)
   end
 
   def to_s
