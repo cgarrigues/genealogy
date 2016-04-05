@@ -180,8 +180,10 @@ class GedcomEntry
   def rdn
     if @label
       uid = @label.to_s
+      @noldapobject = false
     elsif @title
       uid = @title
+      @noldapobject = false
     else
       puts "Don't have a UID yet for #{self.inspect}"
       #puts parentdn.inspect
@@ -250,7 +252,11 @@ class GedcomEntry
     if @user
       if fieldname = @@fieldtoldap[self.class][fieldname]
         if @noldapobject
-          puts "Can't add #{fieldname.inspect} #{value.inspect} to LDAP for #{self.inspect} because the object doesn't exist yet"
+          (rdnfield, rdnvalue) = self.rdn
+          if rdnfield == fieldname
+            # We weren't in LDAP, but now we can be added
+            self.addtoldap
+          end
         else
           @user.addattribute @dn, fieldname, value
         end
@@ -576,10 +582,12 @@ class GedcomEven < GedcomEntry
 
   def rdn
     if @description
-      [:description, @description]
+      description = @description.gsub(/[,"]/, '')
+      @noldapobject = false
     else
       @noldapobject = true
     end
+    [:description, description]
   end
 end
 
@@ -589,7 +597,7 @@ class GedcomBirt < GedcomEven
   attr_ldap :individual, :individualdn
 
   def initialize(parent: nil, **options)
-    super(individual: parent, parent: parent, description: "Birth of #{parent.fullname.gsub(/"/, '\"')}", **options)
+    super(individual: parent, parent: parent, description: "Birth of #{parent.fullname.gsub(/[,"]/, '')}", **options)
   end
 
   def to_s
@@ -885,7 +893,7 @@ class GedcomName < GedcomEntry
   def addtoldap
     dn=@user.dn
     if @last
-      clean = @last.gsub(/"/, '\"')
+      clean = @last.gsub(/[,"]/, '')
       if clean == ''
         clean = 'unknown'
       end
@@ -921,7 +929,7 @@ class GedcomName < GedcomEntry
           end
         end
 
-        clean = @first.gsub(/"/, '\"')
+        clean = @first.gsub(/[,"]/, '')
         if clean == ''
           clean = 'unknown'
         end
@@ -938,7 +946,7 @@ class GedcomName < GedcomEntry
         end
         
         if @suffix
-          clean = @suffix.gsub(/"/, '\"')
+          clean = @suffix.gsub(/[,"]/, '')
           if clean == ''
             clean = 'unknown'
           end
