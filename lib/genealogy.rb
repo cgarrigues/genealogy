@@ -29,6 +29,7 @@ class User
   attr_reader :ldap
   attr_reader :dn
   attr_reader :objectfromdn
+  attr_reader :attributemetadata
 
   def initialize(username: username, password: password)
     @base = 'dc=deepeddy,dc=com'
@@ -40,6 +41,39 @@ class User
              username: @dn,
              password: password,
             })
+    if rootdse = @ldap.search_subschema_entry
+      @attributemetadata = Hash.new {|hash, key| hash[key] = {}}
+      rootdse.attributetypes.each do |attrtype|
+        if matchdata = /\(\s*(?<oid>[\d\.]+)\s*(?<args>.*\s*)\)/.match(attrtype)
+          oid = matchdata[:oid]
+          tmphash = {}
+          argarray = matchdata[:args].split(/\s+/)
+          thisarg = []
+          until argarray == [] do
+            arg = argarray.pop
+            if /[^A-Z-]/.match arg
+              thisarg.unshift arg
+            else
+              text = thisarg.join(' ')
+              if matchdata = text.match(/^'(?<text>.*)'$/)
+                tmphash[arg.downcase.to_sym] = matchdata[:text]
+              else
+                tmphash[arg.downcase.to_sym] = text
+              end
+              thisarg = []
+            end
+          end
+          tmphash[:oid] = oid
+          name = tmphash.delete :name
+          name = name.downcase.to_sym
+          @attributemetadata[name] = tmphash
+        end
+      end
+    else
+      raise "Couldn't read root subschema record: #{@ldap.get_operation_result.message}"
+    end
+
+
     @objectfromdn = Hash.new { |hash, key| hash[key] = getobjectfromdn key}
   end
 
@@ -174,6 +208,10 @@ class GedcomEntry
     end
     if ldapentry
       ldapentry.each do |fieldname, value|
+        syntax = @user.attributemetadata[fieldname][:syntax]
+        if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
+          puts "#{fieldname.inspect} is a DN"
+        end
         fieldname = @@ldaptofield[self.class][fieldname] || @@ldaptofield[self.class.superclass][fieldname] || fieldname
         if @@multivaluevariables[self.class].include?(fieldname) || @@multivaluevariables[self.class.superclass].include?(fieldname)
           instance_variable_set "@#{fieldname}".to_sym, value
