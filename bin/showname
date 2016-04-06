@@ -9,5 +9,5 @@ name = ARGV[0]
 
 user = User.new username: "admin", password: "4zY!4*s#bPMO"
 user.openldap do
-  puts user.findname(first: first, last:last).inspect
+  user.findname(first: first, last:last).inspect
 end

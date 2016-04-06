@@ -93,6 +93,7 @@ class User
     ) do |entry|
         indi = GedcomIndi.new ldapentry: entry, user: self
         puts indi.inspect
+        puts indi.birth.inspect
       end
       raise "Couldn't search #{@dn} for sources: #{@ldap.get_operation_result.message}"
     end
@@ -699,6 +700,7 @@ end
 class GedcomIndi < GedcomEntry
   ldap_class :gedcomindi
   attr_reader :gender, :sex
+  attr_reader :birth
   attr_gedcom :birth, :birt
   attr_ldap :birth, :birthdn
   attr_reader :baptism
