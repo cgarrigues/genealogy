@@ -28,6 +28,7 @@ end
 class User
   attr_reader :ldap
   attr_reader :dn
+  attr_reader :objectfromdn
 
   def initialize(username: username, password: password)
     @base = 'dc=deepeddy,dc=com'
@@ -82,7 +83,9 @@ class User
         filter: Net::LDAP::Filter.eq("objectclass", "gedcomSour"),
         return_result: false,
       ) do |entry|
-          @sources.push GedcomSour.new ldapentry: entry, user: self
+          source = GedcomSour.new ldapentry: entry, user: self
+          @objectfromdn[source.dn] = source
+          @sources.push source
         end
         raise "Couldn't search #{@dn} for sources: #{@ldap.get_operation_result.message}"
       end
@@ -104,6 +107,7 @@ class User
       return_result: false,
     ) do |entry|
         indi = GedcomIndi.new ldapentry: entry, user: self
+        @objectfromdn[indi.dn] = indi
         puts indi
         birthevent = @objectfromdn[indi.birth]
         puts birthevent
@@ -224,6 +228,7 @@ class GedcomEntry
     (rdnfield, rdnvalue) = self.rdn
     unless @noldapobject
       @dn = "#{rdnfield}=#{rdnvalue},#{parentdn}"
+      @user.objectfromdn[@dn] = self
       attrs = {}
       attrs[:objectclass] = ["top", @@classtoldapclass[self.class].to_s]
       attrs[rdnfield] = rdnvalue
@@ -947,7 +952,7 @@ class GedcomName < GedcomEntry
           raise "Couldn't add sn #{@last} at #{dn} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
         end
       end
-      
+
       if @first
         firstinitial = @first[0]
         
@@ -1012,6 +1017,7 @@ class GedcomName < GedcomEntry
       unless @user.ldap.add dn: aliasdn, attributes: attrs
         raise "Couldn't add alias #{aliasdn} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
       end
+      @user.objectfromdn[dn] = self
     end
   end
 
