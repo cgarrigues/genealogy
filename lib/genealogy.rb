@@ -205,11 +205,11 @@ class GedcomEntry
     (rdnfield, rdnvalue) = self.rdn
     unless @noldapobject
       @dn = "#{rdnfield}=#{rdnvalue},#{parentdn}"
-      attr = {}
-      attr[:objectclass] = ["top", @@classtoldapclass[self.class].to_s]
-      attr[rdnfield] = rdnvalue
+      attrs = {}
+      attrs[:objectclass] = ["top", @@classtoldapclass[self.class].to_s]
+      attrs[rdnfield] = rdnvalue
       if ldapsuperclass = @@classtoldapclass[self.class.superclass]
-        attr[:objectclass].push ldapsuperclass.to_s
+        attrs[:objectclass].push ldapsuperclass.to_s
       end
       ldapfields.each do |fieldname|
         ldapfieldname = @@fieldtoldap[self.class][fieldname] || @@fieldtoldap[self.class.superclass][fieldname] || fieldname
@@ -217,16 +217,16 @@ class GedcomEntry
           unless value == [] or value == ""
             if value.kind_of? GedcomEntry
               if value.dn
-                attr[ldapfieldname] = value.dn
+                attrs[ldapfieldname] = value.dn
             end
             else
-              attr[ldapfieldname] = value
+              attrs[ldapfieldname] = value
             end
           end
         end
       end
-      unless @user.ldap.add dn: @dn, attributes: attr
-        raise "Couldn't add #{self.inspect} at #{@dn} with attributes #{attr.inspect}: #{@user.ldap.get_operation_result.message}"
+      unless @user.ldap.add dn: @dn, attributes: attrs
+        raise "Couldn't add #{self.inspect} at #{@dn} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
       end
     end
   end
@@ -886,7 +886,7 @@ class GedcomName < GedcomEntry
         clean = 'unknown'
       end
       dn = "sn=#{clean},#{dn}"
-      attr = {
+      attrs = {
         sn: @last,
         objectclass: ["top", "gedcomName"],
       }
@@ -895,8 +895,8 @@ class GedcomName < GedcomEntry
         scope: Net::LDAP::SearchScope_BaseObject,
         return_result: false,
       )
-        unless @user.ldap.add dn: dn, attributes: attr
-          raise "Couldn't add sn #{@last} at #{dn} with attributes #{attr.inspect}: #{@user.ldap.get_operation_result.message}"
+        unless @user.ldap.add dn: dn, attributes: attrs
+          raise "Couldn't add sn #{@last} at #{dn} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
         end
       end
       
@@ -910,9 +910,9 @@ class GedcomName < GedcomEntry
             scope: Net::LDAP::SearchScope_BaseObject,
             return_result: false,
           )
-            attr[:givenname] = firstinitial
-            unless @user.ldap.add dn: dn, attributes: attr
-              raise "Couldn't add first initial #{firstinitial} at #{dn} with attributes #{attr.inspect}: #{@user.ldap.get_operation_result.message}"
+            attrs[:givenname] = firstinitial
+            unless @user.ldap.add dn: dn, attributes: attrs
+              raise "Couldn't add first initial #{firstinitial} at #{dn} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
             end
           end
         end
@@ -927,9 +927,9 @@ class GedcomName < GedcomEntry
           scope: Net::LDAP::SearchScope_BaseObject,
           return_result: false,
         )
-          attr[:givenname] = @first
-          unless @user.ldap.add dn: dn, attributes: attr
-            raise "Couldn't add givenname #{@first} at #{dn} with attributes #{attr.inspect}: #{@user.ldap.get_operation_result.message}"
+          attrs[:givenname] = @first
+          unless @user.ldap.add dn: dn, attributes: attrs
+            raise "Couldn't add givenname #{@first} at #{dn} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
           end
         end
         
@@ -944,9 +944,9 @@ class GedcomName < GedcomEntry
             scope: Net::LDAP::SearchScope_BaseObject,
             return_result: false,
           )
-            attr[:initials] = @suffix
-            unless @user.ldap.add dn: dn, attributes: attr
-              raise "Couldn't add initials #{@suffix} at #{dn} with attributes #{attr.inspect}: #{@user.ldap.get_operation_result.message}"
+            attrs[:initials] = @suffix
+            unless @user.ldap.add dn: dn, attributes: attrs
+              raise "Couldn't add initials #{@suffix} at #{dn} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
             end
           end
         end
@@ -955,14 +955,14 @@ class GedcomName < GedcomEntry
 
       uid = parent.label.to_s
       aliasdn = "uniqueidentifier=#{uid},#{dn}"
-      attr = {
+      attrs = {
         uniqueidentifier: uid,
         objectclass: ["alias", "extensibleObject"],
         aliasedobjectname: parent.dn,
       }
-      #puts "Adding alias to #{parent.dn} under #{dn} as #{aliasdn} with attributes: #{attr.inspect}"
-      unless @user.ldap.add dn: aliasdn, attributes: attr
-        raise "Couldn't add alias #{aliasdn} with attributes #{attr.inspect}: #{@user.ldap.get_operation_result.message}"
+      #puts "Adding alias to #{parent.dn} under #{dn} as #{aliasdn} with attributes: #{attrs.inspect}"
+      unless @user.ldap.add dn: aliasdn, attributes: attrs
+        raise "Couldn't add alias #{aliasdn} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
       end
     end
   end
