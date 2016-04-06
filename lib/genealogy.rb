@@ -47,17 +47,9 @@ class User
     end
   end
   
-  def addattribute(dn, attribute, value)
-    if value.kind_of? GedcomEntry
-      if value.dn
-        unless @ldap.add_attribute dn, attribute, value.dn
-          raise "Couldn't add #{attribute} #{value.dn} to #{dn}: #{@ldap.get_operation_result.message}"
-        end
-      end
-    else
-      unless @ldap.add_attribute dn, attribute, value
-        raise "Couldn't add #{attribute} #{value.inspect} to #{dn}: #{@ldap.get_operation_result.message}"
-      end
+  def modifyattributes(dn, ops)
+    unless @ldap.modify dn: dn, operations: ops
+      raise "Couldn't modify attributes #{ops} for #{dn}: #{@ldap.get_operation_result.message}"
     end
   end
   
@@ -240,6 +232,7 @@ class GedcomEntry
   end
   
   def addfields(**options)
+    ops = []
     options.each do |fieldname, value|
       fieldname = @@gedcomtofield[self.class][fieldname] || @@gedcomtofield[self.class.superclass][fieldname] || fieldname
       if @@multivaluevariables[self.class].include?(fieldname) || @@multivaluevariables[self.class.superclass].include?(fieldname)
@@ -257,13 +250,23 @@ class GedcomEntry
             (rdnfield, rdnvalue) = self.rdn
             if rdnfield == fieldname
               # We weren't in LDAP, but now we can be added
+              puts "delayed addition of #{@dn} to ldap"
               self.addtoldap
             end
           else
-            @user.addattribute @dn, fieldname, value
+            if value.kind_of? GedcomEntry
+              if value.dn
+                ops.push [:add, fieldname, value.dn]
+              end
+            else
+              ops.push [:add, fieldname, value]
+            end
           end
         end
       end
+    end
+    unless ops == []
+      @user.modifyattributes @dn, ops
     end
   end
   
@@ -332,10 +335,10 @@ class GedcomAddr < GedcomEntry
     options.each do |fieldname, value|
       if fieldname == :cont
         @address += "\n" + value
-      else
-        super
+        options.delete fieldname
       end
     end
+    super(**options)
   end
 end
 
@@ -561,10 +564,10 @@ class GedcomEven < GedcomEntry
     options.each do |fieldname, value|
       if fieldname == :sour
         addsource value
-      else
-        super
+        options.delete fieldname
       end
     end
+    super(**options)
   end
 
   def addsource(source)
@@ -677,10 +680,10 @@ class GedcomAdop < GedcomEven
             @parents.push value.wife
           end
         end
-      else
-        super
+        options.delete fieldname
       end
     end
+    super(**options)
   end
 
   def delfields(**options)
@@ -836,27 +839,27 @@ class GedcomIndi < GedcomEntry
             addfields(suffix: suffix)
           end
         end
-        super
       elsif fieldname == :birt
-        super
         addevent value, nil
       elsif fieldname == :deat
-        super
         addevent value, nil
       elsif fieldname == :buri
         addevent value, nil
+        options.delete fieldname
       elsif fieldname == :bapm
         addevent value, nil
+        options.delete fieldname
       elsif fieldname == :even
         addevent value, nil
+        options.delete fieldname
       elsif fieldname == :adop
         addevent value, nil
       elsif fieldname == :sour
         addsource value
-      else
-        super
+        options.delete fieldname
       end
     end
+    super(**options)
   end
 end
 
@@ -1144,10 +1147,10 @@ class GedcomNote < GedcomEntry
     options.each do |fieldname, value|
       if fieldname == :cont
         @note += "\n" + value
-      else
-        super
+        options.delete fieldname
       end
     end
+    super(**options)
   end
 
   def to_s
@@ -1222,6 +1225,7 @@ class GedcomFam < GedcomEntry
             end
           end
         end
+        options.delete fieldname
       elsif fieldname == :wife
         @wife = value
         @children.each do |child|
@@ -1238,6 +1242,7 @@ class GedcomFam < GedcomEntry
             end
           end
         end
+        options.delete fieldname
       elsif fieldname == :chil
         #puts "Adding #{fieldname} #{value.inspect} to #{self.inspect}"
         @children.push child
@@ -1253,10 +1258,10 @@ class GedcomFam < GedcomEntry
             @wife.addevent value.birth
           end
         end
-      else
-        super
+        options.delete fieldname
       end
     end
+    super(**options)
   end
   
   def addevent(event, date = event.date)
