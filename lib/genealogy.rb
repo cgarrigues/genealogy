@@ -39,6 +39,26 @@ class User
              username: @dn,
              password: password,
             })
+    @objectfromdn = Hash.new { |hash, key| hash[key] = getobjectfromdn key}
+  end
+
+  def getobjectfromdn(dn)
+    object = nil
+    unless @ldap.search(
+      base: dn,
+      scope: Net::LDAP::SearchScope_BaseObject,
+      return_result: false,
+    ) do |entry|
+        objectclasses = entry.objectclass.map {|klass| klass.downcase.to_sym}
+        ldapclass = objectclasses.detect do |ldapclass|
+          GedcomEntry.getclassfromldapclass ldapclass
+        end
+        klass = GedcomEntry.getclassfromldapclass ldapclass
+        object = klass.new ldapentry: entry, user: self
+      end
+      raise "Couldn't find #{dn}: #{@ldap.get_operation_result.message}"
+    end
+    object
   end
 
   def openldap
@@ -84,8 +104,9 @@ class User
       return_result: false,
     ) do |entry|
         indi = GedcomIndi.new ldapentry: entry, user: self
-        puts indi.inspect
-        puts indi.birth.inspect
+        puts indi
+        birthevent = @objectfromdn[indi.birth]
+        puts birthevent
       end
       raise "Couldn't search #{@dn} for sources: #{@ldap.get_operation_result.message}"
     end
@@ -105,6 +126,7 @@ class GedcomEntry
   @@fieldtoldap = Hash.new { |hash, key| hash[key] = Hash.new}
   @@ldaptofield = Hash.new { |hash, key| hash[key] = Hash.new}
   @@classtoldapclass = Hash.new
+  @@ldapclasstoclass = Hash.new
 
   def self.attr_multi(fieldname)
     @@multivaluevariables[self].add fieldname
@@ -121,6 +143,11 @@ class GedcomEntry
 
   def self.ldap_class(ldapclass)
     @@classtoldapclass[self] = ldapclass
+    @@ldapclasstoclass[ldapclass] = self
+  end
+
+  def self.getclassfromldapclass(ldapclass)
+    @@ldapclasstoclass[ldapclass]
   end
 
   def initialize(ldapentry: nil, **options)
@@ -594,15 +621,19 @@ class GedcomBirt < GedcomEven
   attr_reader :individual
   attr_ldap :individual, :individualdn
 
-  def initialize(parent: nil, **options)
-    super(individual: parent, parent: parent, description: "Birth of #{parent.fullname.gsub(/[,"]/, '')}", **options)
+  def initialize(parent: nil, ldapentry: nil, **options)
+    if ldapentry
+      super(ldapentry: ldapentry, **options)
+    else
+      super(individual: parent, parent: parent, description: "Birth of #{parent.fullname.gsub(/[,"]/, '')}", **options)
+    end
   end
 
   def to_s
     if date
-      "#{@individual.names[0]} #{date} #{@place}"
+      "#{@description} #{date} #{@place}"
     else
-      "#{@individual.names[0]} #{@place}"
+      "#{@description} #{@place}"
     end
   end
 end
