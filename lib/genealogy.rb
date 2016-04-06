@@ -145,8 +145,8 @@ class GedcomEntry
     if @label
       @source.labels[@label] = self
       @source.references[@label].each do |ref|
-        ref.parent.delfield ref.fieldname, ref
-        ref.parent[ref.fieldname] = self
+        ref.parent.delfields(ref.fieldname => ref)
+        ref.parent.addfields(ref.fieldname => self)
       end
     end
     if ldapentry
@@ -166,7 +166,7 @@ class GedcomEntry
       end
     end
     if @parent
-      @parent[fieldname] = self
+      @parent.addfields(fieldname => self)
     end
   end
 
@@ -239,39 +239,43 @@ class GedcomEntry
     end
   end
   
-  def []=(fieldname, value)
-    fieldname = @@gedcomtofield[self.class][fieldname] || @@gedcomtofield[self.class.superclass][fieldname] || fieldname
-    if @@multivaluevariables[self.class].include?(fieldname) || @@multivaluevariables[self.class.superclass].include?(fieldname)
-      if oldvalues = instance_variable_get("@#{fieldname}".to_sym)
-        instance_variable_set "@#{fieldname}".to_sym, oldvalues + [value]
-      else
-        instance_variable_set "@#{fieldname}".to_sym, [value]
-      end
-    else
-      instance_variable_set "@#{fieldname}".to_sym, value
-    end
-    if @user and @dn
-      if fieldname = (@@fieldtoldap[self.class][fieldname] || @@fieldtoldap[self.class.superclass][fieldname])
-        if @noldapobject
-          (rdnfield, rdnvalue) = self.rdn
-          if rdnfield == fieldname
-            # We weren't in LDAP, but now we can be added
-            self.addtoldap
-          end
+  def addfields(**options)
+    options.each do |fieldname, value|
+      fieldname = @@gedcomtofield[self.class][fieldname] || @@gedcomtofield[self.class.superclass][fieldname] || fieldname
+      if @@multivaluevariables[self.class].include?(fieldname) || @@multivaluevariables[self.class.superclass].include?(fieldname)
+        if oldvalues = instance_variable_get("@#{fieldname}".to_sym)
+          instance_variable_set "@#{fieldname}".to_sym, oldvalues + [value]
         else
-          @user.addattribute @dn, fieldname, value
+          instance_variable_set "@#{fieldname}".to_sym, [value]
+        end
+      else
+        instance_variable_set "@#{fieldname}".to_sym, value
+      end
+      if @user and @dn
+        if fieldname = (@@fieldtoldap[self.class][fieldname] || @@fieldtoldap[self.class.superclass][fieldname])
+          if @noldapobject
+            (rdnfield, rdnvalue) = self.rdn
+            if rdnfield == fieldname
+              # We weren't in LDAP, but now we can be added
+              self.addtoldap
+            end
+          else
+            @user.addattribute @dn, fieldname, value
+          end
         end
       end
     end
   end
   
-  def delfield(fieldname, value)
-    if @@multivaluevariables[self.class].include?(fieldname) || @@multivaluevariables[self.class.superclass].include?(fieldname)
-      if oldvalues = instance_variable_get("@#{fieldname}".to_sym)
-        instance_variable_set "@#{fieldname}".to_sym, oldvalues.delete_if {|i| i == value}
+  def delfields(**options)
+    options.each do |fieldname, value|
+      if @@multivaluevariables[self.class].include?(fieldname) || @@multivaluevariables[self.class.superclass].include?(fieldname)
+        if oldvalues = instance_variable_get("@#{fieldname}".to_sym)
+          instance_variable_set "@#{fieldname}".to_sym, oldvalues.delete_if {|i| i == value}
+        end
+      else
+        instance_variable_set "@#{fieldname}".to_sym, nil
       end
-    else
-      instance_variable_set "@#{fieldname}".to_sym, nil
     end
   end
   
@@ -324,18 +328,20 @@ class GedcomAddr < GedcomEntry
     super(address: arg, **options)
   end
   
-  def []=(fieldname, child)
-    if fieldname == :cont
-      @address += "\n" + child
-    else
-      super
+  def addfields(**options)
+    options.each do |fieldname, value|
+      if fieldname == :cont
+        @address += "\n" + value
+      else
+        super
+      end
     end
   end
 end
 
 class GedcomString < GedcomEntry
   def initialize(fieldname: "", arg: "", parent: nil, **options)
-    parent[fieldname] = arg
+    parent.addfields(fieldname => arg)
   end
 end
 
@@ -426,13 +432,13 @@ class GedcomDate < GedcomEntry
     day = args.pop
     day = Integer(day || 0)
     
-    parent[:date] = raw
-    # Don't know why these need to be coerced to strings to be accepted by openldap
-    parent[:year] = year.to_s
-    parent[:month] = month.to_s
-    parent[:day] = day.to_s
-    parent[:relativetodate] = relative.to_s
-    parent[:baddata] = baddata.to_s.upcase
+    parent.addfields(date: raw,
+                     # Don't know why these need to be coerced to strings to be accepted by openldap
+                     year: year.to_s,
+                     month: month.to_s,
+                     day: day.to_s,
+                     relativetodate: relative.to_s,
+                     baddata: baddata.to_s.upcase)
   end
 end
 
@@ -485,7 +491,7 @@ class GedcomPlac < GedcomEntry
     end
     if parent
       place.addevent parent
-      parent[fieldname] = place
+      parent.addfields(fieldname => place)
     end
   end
   
@@ -551,20 +557,22 @@ class GedcomEven < GedcomEntry
     end
   end
 
-  def []=(fieldname, value)
-    if fieldname == :sour
-      addsource value
-    else
-      super
+  def addfields(**options)
+    options.each do |fieldname, value|
+      if fieldname == :sour
+        addsource value
+      else
+        super
+      end
     end
   end
 
   def addsource(source)
-    self[:sources] = source
+    addfields(:sources => source)
   end
 
   def delsource(source)
-    delfield :sources, source
+    delfields(sources: source)
   end
 
   def rdn
@@ -657,35 +665,39 @@ class GedcomAdop < GedcomEven
     super(individual: parent, **options)
   end
 
-  def []=(fieldname, value)
-    if fieldname == :famc
-      if value.respond_to? :addevent
-        value.addevent self, @date
-        if value.husband
-          @parents.push value.husband
+  def addfields(**options)
+    options.each do |fieldname, value|
+      if fieldname == :famc
+        if value.respond_to? :addevent
+          value.addevent self, @date
+          if value.husband
+            @parents.push value.husband
+          end
+          if value.wife
+            @parents.push value.wife
+          end
         end
-        if value.wife
-          @parents.push value.wife
-        end
+      else
+        super
       end
-    else
-      super
     end
   end
 
-  def delfield(fieldname, value)
-    if fieldname == :famc
-      if value.respond_to? :delevent
-        value.delevent self, @date
-        if value.husband
-          @parents.delete_if {|i| i == value.husband}
+  def delfields(**options)
+    options.each do |fieldname, value|
+      if fieldname == :famc
+        if value.respond_to? :delevent
+          value.delevent self, @date
+          if value.husband
+            @parents.delete_if {|i| i == value.husband}
+          end
+          if value.wife
+            @parents.delete_if {|i| i == value.wife}
+          end
         end
-        if value.wife
-          @parents.delete_if {|i| i == value.wife}
-        end
+      else
+        super
       end
-    else
-      super
     end
   end
 
@@ -777,7 +789,7 @@ class GedcomIndi < GedcomEntry
   end
   
   def addsource(source)
-    self[:sources] = source
+    addfields(sources: source)
     @events.keys.each do |year|
       @events[year].keys.each do |month|
         @events[year][month].keys.each do |day|
@@ -792,7 +804,7 @@ class GedcomIndi < GedcomEntry
   end
 
   def delsource(source)
-    delfield :sources, source
+    delfields(sources: source)
     @events.keys.each do |year|
       @events[year].keys.each do |month|
         @events[year][month].keys.each do |day|
@@ -806,42 +818,44 @@ class GedcomIndi < GedcomEntry
     end
   end
   
-  def []=(fieldname, value)
-    if fieldname == :name
-      unless @fullname
-        # If there are more than one name defined, populate with the first one; the others will be findable via the name objects
-        if fullname = value.to_s
-          self[:fullname] = fullname
+  def addfields(**options)
+    options.each do |fieldname, value|
+      if fieldname == :name
+        unless @fullname
+          # If there are more than one name defined, populate with the first one; the others will be findable via the name objects
+          if fullname = value.to_s
+            addfields(fullname: fullname)
+          end
+          if first = value.first
+            addfields(first: first)
+          end
+          if last = value.last
+            addfields(last: last)
+          end
+          if suffix = value.suffix
+            addfields(suffix: suffix)
+          end
         end
-        if first = value.first
-          self[:first] = first
-        end
-        if last = value.last
-          self[:last] = last
-        end
-        if suffix = value.suffix
-          self[:suffix] = suffix
-        end
+        super
+      elsif fieldname == :birt
+        super
+        addevent value, nil
+      elsif fieldname == :deat
+        super
+        addevent value, nil
+      elsif fieldname == :buri
+        addevent value, nil
+      elsif fieldname == :bapm
+        addevent value, nil
+      elsif fieldname == :even
+        addevent value, nil
+      elsif fieldname == :adop
+        addevent value, nil
+      elsif fieldname == :sour
+        addsource value
+      else
+        super
       end
-      super
-    elsif fieldname == :birt
-      super
-      addevent value, nil
-    elsif fieldname == :deat
-      super
-      addevent value, nil
-    elsif fieldname == :buri
-      addevent value, nil
-    elsif fieldname == :bapm
-      addevent value, nil
-    elsif fieldname == :even
-      addevent value, nil
-    elsif fieldname == :adop
-      addevent value, nil
-    elsif fieldname == :sour
-      addsource value
-    else
-      super
     end
   end
 end
@@ -851,7 +865,7 @@ class GedcomChar < GedcomEntry
   
   def initialize(fieldname: nil, arg: "", parent: nil, **options)
     if arg == 'ANSEL'
-      parent[fieldname] = ANSEL::Converter.new
+      parent.addfields(fieldname => ANSEL::Converter.new)
     else
       raise "Don't know what to do with #{arg} encoding"
     end
@@ -985,7 +999,7 @@ class GedcomSex < GedcomEntry
     else
       gender = arg
     end
-    parent[fieldname] = gender
+    parent.addfields(fieldname => gender)
   end
   
   def to_s
@@ -1042,7 +1056,7 @@ class GedcomSour < GedcomEntry
       arg = matchdata[:ref].upcase.to_sym
       if @labels[arg]
         @labels[arg].parent = parent
-        parent[fieldname] = @labels[arg]
+        parent.addfields(fieldname => @labels[arg])
         obj = @labels[arg]
       else
         obj = classname.new fieldname: fieldname, label: label, arg: arg, parent: parent, source: self, user: @user
@@ -1126,11 +1140,13 @@ class GedcomNote < GedcomEntry
     super(note: arg, **options)
   end
 
-  def []=(fieldname, value)
-    if fieldname == :cont
-      @note += "\n" + value
-    else
-      super
+  def addfields(**options)
+    options.each do |fieldname, value|
+      if fieldname == :cont
+        @note += "\n" + value
+      else
+        super
+      end
     end
   end
 
@@ -1188,59 +1204,61 @@ class GedcomFam < GedcomEntry
     "#{husband} and #{wife}"
   end
 
-  def []=(fieldname, value)
-    if fieldname == :husb
-      @husband = value
-      @children.each do |child|
-        child.father = @husband
-      end
-      @events.keys.each do |year|
-        @events[year].keys.each do |month|
-          @events[year][month].keys.each do |day|
-            @events[year][month][day].keys.each do |relative|
-              @events[year][month][day][relative].each do |event|
-                @husband.addevent event
+  def addfields(**options)
+    options.each do |fieldname, value|
+      if fieldname == :husb
+        @husband = value
+        @children.each do |child|
+          child.father = @husband
+        end
+        @events.keys.each do |year|
+          @events[year].keys.each do |month|
+            @events[year][month].keys.each do |day|
+              @events[year][month][day].keys.each do |relative|
+                @events[year][month][day][relative].each do |event|
+                  @husband.addevent event
+                end
               end
             end
           end
         end
-      end
-    elsif fieldname == :wife
-      @wife = value
-      @children.each do |child|
-        child.mother = @wife
-      end
-      @events.keys.each do |year|
-        @events[year].keys.each do |month|
-          @events[year][month].keys.each do |day|
-            @events[year][month][day].keys.each do |relative|
-              @events[year][month][day][relative].each do |event|
-                @wife.addevent event
+      elsif fieldname == :wife
+        @wife = value
+        @children.each do |child|
+          child.mother = @wife
+        end
+        @events.keys.each do |year|
+          @events[year].keys.each do |month|
+            @events[year][month].keys.each do |day|
+              @events[year][month][day].keys.each do |relative|
+                @events[year][month][day][relative].each do |event|
+                  @wife.addevent event
+                end
               end
             end
           end
         end
-      end
-    elsif fieldname == :chil
-      #puts "Adding #{fieldname} #{value.inspect} to #{self.inspect}"
-      @children.push child
-      if @husband
-        value.father = @husband
-        if value.birth
-          @husband.addevent value.birth
+      elsif fieldname == :chil
+        #puts "Adding #{fieldname} #{value.inspect} to #{self.inspect}"
+        @children.push child
+        if @husband
+          value.father = @husband
+          if value.birth
+            @husband.addevent value.birth
+          end
         end
-      end
-      if @wife
-        value.mother = @wife
-        if value.birth
-          @wife.addevent value.birth
+        if @wife
+          value.mother = @wife
+          if value.birth
+            @wife.addevent value.birth
+          end
         end
+      else
+        super
       end
-    else
-      super
     end
   end
-
+  
   def addevent(event, date = event.date)
     if date
       @events[date.year][date.month][date.day][date.relative].push event
