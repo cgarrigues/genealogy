@@ -133,8 +133,8 @@ class GedcomEntry
   def initialize(ldapentry: nil, **options)
     options.each do |fieldname, value|
       if value
-        fieldname = @@ldaptofield[self.class][fieldname] || fieldname
-        if @@multivaluevariables[self.class].include? fieldname
+        fieldname = @@ldaptofield[self.class][fieldname] || @@ldaptofield[self.class.superclass][fieldname] || fieldname
+        if @@multivaluevariables[self.class].include?(fieldname) || @@multivaluevariables[self.class.superclass].include?(fieldname)
           instance_variable_set "@#{fieldname}".to_sym, [value]
         else
           instance_variable_set "@#{fieldname}".to_sym, value
@@ -150,8 +150,8 @@ class GedcomEntry
     end
     if ldapentry
       ldapentry.each do |fieldname, value|
-        fieldname = @@ldaptofield[self.class][fieldname] || fieldname
-        if @@multivaluevariables[self.class].include? fieldname
+        fieldname = @@ldaptofield[self.class][fieldname] || @@ldaptofield[self.class.superclass][fieldname] || fieldname
+        if @@multivaluevariables[self.class].include?(fieldname) || @@multivaluevariables[self.class.superclass].include?(fieldname)
           instance_variable_set "@#{fieldname}".to_sym, value
         else
           instance_variable_set "@#{fieldname}".to_sym, value[0]
@@ -159,7 +159,7 @@ class GedcomEntry
       end
     else
       if @user
-        if @@classtoldapclass[self.class]
+        if @@classtoldapclass[self.class] || @@classtoldapclass[self.class.superclass]
           addtoldap
         end
       end
@@ -174,7 +174,7 @@ class GedcomEntry
   end
 
   def ldapfields
-    @@fieldtoldap[self.class].keys
+    @@fieldtoldap[self.class].keys + @@fieldtoldap[self.class.superclass].keys
   end
 
   def rdn
@@ -211,7 +211,7 @@ class GedcomEntry
         attr[:objectclass].push ldapsuperclass.to_s
       end
       ldapfields.each do |fieldname|
-        ldapfieldname = @@fieldtoldap[self.class][fieldname] || fieldname
+        ldapfieldname = @@fieldtoldap[self.class][fieldname] || @@fieldtoldap[self.class.superclass][fieldname] || fieldname
         if value = instance_variable_get("@#{fieldname}".to_sym)
           unless value == [] or value == ""
             if value.kind_of? GedcomEntry
@@ -239,8 +239,8 @@ class GedcomEntry
   end
   
   def []=(fieldname, value)
-    fieldname = @@gedcomtofield[self.class][fieldname] || fieldname
-    if @@multivaluevariables[self.class].include? fieldname
+    fieldname = @@gedcomtofield[self.class][fieldname] || @@gedcomtofield[self.class.superclass][fieldname] || fieldname
+    if @@multivaluevariables[self.class].include?(fieldname) || @@multivaluevariables[self.class.superclass].include?(fieldname)
       if oldvalues = instance_variable_get("@#{fieldname}".to_sym)
         instance_variable_set "@#{fieldname}".to_sym, oldvalues + [value]
       else
@@ -249,8 +249,8 @@ class GedcomEntry
     else
       instance_variable_set "@#{fieldname}".to_sym, value
     end
-    if @user
-      if fieldname = @@fieldtoldap[self.class][fieldname]
+    if @user and @dn
+      if fieldname = (@@fieldtoldap[self.class][fieldname] || @@fieldtoldap[self.class.superclass][fieldname])
         if @noldapobject
           (rdnfield, rdnvalue) = self.rdn
           if rdnfield == fieldname
@@ -265,7 +265,7 @@ class GedcomEntry
   end
   
   def delfield(fieldname, value)
-    if @@multivaluevariables[self.class].include? fieldname
+    if @@multivaluevariables[self.class].include?(fieldname) || @@multivaluevariables[self.class.superclass].include?(fieldname)
       if oldvalues = instance_variable_get("@#{fieldname}".to_sym)
         instance_variable_set "@#{fieldname}".to_sym, oldvalues.delete_if {|i| i == value}
       end
