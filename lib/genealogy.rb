@@ -424,33 +424,14 @@ class GedcomDate < GedcomEntry
     end
     day = args.pop
     day = Integer(day || 0)
-    addevent parent
-    super(raw: raw, year: year, month: month, day: day, relative: relative, parent: parent, baddata: baddata, **options)
-    if @parent.parent
-      @parent.parent.delevent parent, nil
-      @parent.parent.addevent parent, self
-    end
-    #puts self.inspect
-    end
-
-  def to_s
-    @raw
-  end
-
-  def addevent(event, date = event.date)
-    if date
-      @events[date.year][date.month][date.day][date.relative].push event
-    else
-      @events[999999][0][0][0].push event
-    end
-  end
-
-  def delevent(event, date = event.date)
-    if date
-      @events[date.year][date.month][date.day][date.relative].delete_if {|i| i == event}
-    else
-      @events[999999][0][0][0].delete_if {|i| i == event}
-    end
+    
+    parent[:date] = raw
+    # Don't know why these need to be coerced to strings to be accepted by openldap
+    parent[:year] = year.to_s
+    parent[:month] = month.to_s
+    parent[:day] = day.to_s
+    parent[:relativetodate] = relative.to_s
+    parent[:baddata] = baddata.to_s.upcase
   end
 end
 
@@ -513,7 +494,7 @@ class GedcomPlac < GedcomEntry
   
   def addevent(event, date = event.date)
     if date
-      @events[date.year][date.month][date.day][date.relative].push event
+      @events[@year][@month][@day][@relativetodate].push event
     else
       @events[999999][0][0][0].push event
     end
@@ -521,7 +502,7 @@ class GedcomPlac < GedcomEntry
 
   def delevent(event, date)
     if date
-      @events[date.year][date.month][date.day][date.relative].delete_if {|i| i == event}
+      @events[@year][@month][@day][@relativetodate].delete_if {|i| i == event}
     else
       @events[999999][0][0][0].delete_if {|i| i == event}
     end
@@ -540,6 +521,11 @@ class GedcomEven < GedcomEntry
   ldap_class :gedcomeven
   attr_reader :date
   attr_ldap :date, :gedcomdate
+  attr_ldap :year, :year
+  attr_ldap :month, :month
+  attr_ldap :day, :day
+  attr_ldap :relativetodate, :relativetodate
+  attr_ldap :baddata, :baddata
   attr_gedcom :place, :plac
   attr_ldap :place, :gedcom
   attr_reader :description
