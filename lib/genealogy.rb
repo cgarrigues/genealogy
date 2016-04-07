@@ -147,7 +147,7 @@ class User
         @objectfromdn[indi.dn] = indi
         puts indi
       end
-      raise "Couldn't search #{@dn} for sources: #{@ldap.get_operation_result.message}"
+      raise "Couldn't search #{@dn} for names: #{@ldap.get_operation_result.message}"
     end
   end
 end
