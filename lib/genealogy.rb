@@ -298,31 +298,39 @@ class GedcomEntry
     end
     
     (rdnfield, rdnvalue) = self.rdn
+    rdnfield = @@fieldtoldap[self.class][rdnfield] || @@fieldtoldap[self.class.superclass][rdnfield] || rdnfield
     unless @noldapobject
       @dn = "#{rdnfield}=#{rdnvalue},#{parentdn}"
-      @user.objectfromdn[@dn] = self
-      attrs = {}
-      attrs[:objectclass] = ["top", @@classtoldapclass[self.class].to_s]
-      attrs[rdnfield] = rdnvalue
-      if ldapsuperclass = @@classtoldapclass[self.class.superclass]
-        attrs[:objectclass].push ldapsuperclass.to_s
-      end
-      ldapfields.each do |fieldname|
-        ldapfieldname = @@fieldtoldap[self.class][fieldname] || @@fieldtoldap[self.class.superclass][fieldname] || fieldname
-        if value = instance_variable_get("@#{fieldname}".to_sym)
-          unless value == [] or value == ""
-            if value.kind_of? GedcomEntry
-              if value.dn
-                attrs[ldapfieldname] = value.dn
-            end
-            else
-              attrs[ldapfieldname] = value
+
+      unless @user.ldap.search(
+        base: @dn,
+        scope: Net::LDAP::SearchScope_BaseObject,
+        return_result: false,
+      )
+        @user.objectfromdn[@dn] = self
+        attrs = {}
+        attrs[:objectclass] = ["top", @@classtoldapclass[self.class].to_s]
+        attrs[rdnfield] = rdnvalue
+        if ldapsuperclass = @@classtoldapclass[self.class.superclass]
+          attrs[:objectclass].push ldapsuperclass.to_s
+        end
+        ldapfields.each do |fieldname|
+          ldapfieldname = @@fieldtoldap[self.class][fieldname] || @@fieldtoldap[self.class.superclass][fieldname] || fieldname
+          if value = instance_variable_get("@#{fieldname}".to_sym)
+            unless value == [] or value == ""
+              if value.kind_of? GedcomEntry
+                if value.dn
+                  attrs[ldapfieldname] = value.dn
+                end
+              else
+                attrs[ldapfieldname] = value
+              end
             end
           end
         end
-      end
-      unless @user.ldap.add dn: @dn, attributes: attrs
-        raise "Couldn't add #{self.inspect} at #{@dn} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
+        unless @user.ldap.add dn: @dn, attributes: attrs
+          raise "Couldn't add #{self.inspect} at #{@dn} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
+        end
       end
     end
   end
@@ -380,7 +388,9 @@ class GedcomEntry
   end
   
   def delfields(**options)
+    ops = []
     options.each do |fieldname, value|
+      fieldname = @@gedcomtofield[self.class][fieldname] || @@gedcomtofield[self.class.superclass][fieldname] || fieldname
       if @@multivaluevariables[self.class].include?(fieldname) || @@multivaluevariables[self.class.superclass].include?(fieldname)
         if oldvalues = instance_variable_get("@#{fieldname}".to_sym)
           instance_variable_set "@#{fieldname}".to_sym, oldvalues.delete_if {|i| i == value}
@@ -388,6 +398,34 @@ class GedcomEntry
       else
         instance_variable_set "@#{fieldname}".to_sym, nil
       end
+      if @user and @dn
+        if fieldname = (@@fieldtoldap[self.class][fieldname] || @@fieldtoldap[self.class.superclass][fieldname])
+          if @noldapobject
+            (rdnfield, rdnvalue) = self.rdn
+            if rdnfield == fieldname
+              # We weren't in LDAP, but now we can be added
+              puts "delayed addition of #{@dn} to ldap"
+              self.addtoldap
+            end
+          else
+            syntax = @user.attributemetadata[fieldname][:syntax]
+            if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
+              if value.dn
+                ops.push [:delete, fieldname, value.dn]
+              end
+            elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
+              ops.push [:delete, fieldname, value.to_s]
+            elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
+              ops.push [:delete, fieldname, value.to_s.upcase]
+            else
+              ops.push [:delete, fieldname, value]
+            end
+          end
+        end
+      end
+    end
+    unless ops == []
+      @user.modifyattributes @dn, ops
     end
   end
   
@@ -943,17 +981,11 @@ class GedcomIndi < GedcomEntry
             addfields(suffix: suffix)
           end
         end
-      elsif fieldname == :birt
-      elsif fieldname == :deat
       elsif fieldname == :buri
         options.delete fieldname
       elsif fieldname == :bapm
         options.delete fieldname
       elsif fieldname == :even
-        options.delete fieldname
-      elsif fieldname == :adop
-      elsif fieldname == :sour
-        addsource value
         options.delete fieldname
       end
     end
@@ -1264,15 +1296,26 @@ class GedcomCont < GedcomString
 end
 
 class GedcomPage < GedcomEntry
+  ldap_class :sourcepage
   attr_reader :pageno
+  attr_ldap :pageno, :description
   attr_gedcom :source, :sour
   
   def initialize(arg: "", parent: nil, **options)
-    @pageno = arg
-    @source = parent
+    super(pageno: arg, source: parent, parent: parent, **options)
     #Change the source's parent to point to us instead of the source itself.
-    @source.parent.delsource @source
-    @source.parent.addsource self
+    @source.parent.delfields(sour: parent)
+    @source.parent.addfields(sour: self)
+  end
+
+  def rdn
+    if @pageno
+      pageno = @pageno.gsub(/[,"]/, '')
+      @noldapobject = false
+    else
+      @noldapobject = true
+    end
+    [:pageno, pageno]
   end
 
   def to_s

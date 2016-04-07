@@ -266,3 +266,11 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.9
 	MUST (individualDN )
 	MAY (parentDNs)
 	)
+
+objectclass ( 1.3.6.1.4.1.19106.1.2.10
+	NAME 'sourcePage'
+	DESC 'a page of a source document'
+	STRUCTURAL
+	MUST (description )
+	)
+
