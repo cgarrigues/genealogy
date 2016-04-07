@@ -242,6 +242,10 @@ class GedcomEntry
         syntax = @user.attributemetadata[fieldname][:syntax]
         if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
           value.map! {|dn| LdapAlias.new dn, @user}
+        elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
+          value.map! {|num| Integer(num)}
+        elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
+          value.map! {|val| (val == 'TRUE')}
         end
         fieldname = @@ldaptofield[self.class][fieldname] || @@ldaptofield[self.class.superclass][fieldname] || fieldname
         if @@multivaluevariables[self.class].include?(fieldname) || @@multivaluevariables[self.class.superclass].include?(fieldname)
@@ -355,10 +359,15 @@ class GedcomEntry
               self.addtoldap
             end
           else
-            if value.kind_of? GedcomEntry
+            syntax = @user.attributemetadata[fieldname][:syntax]
+            if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
               if value.dn
                 ops.push [:add, fieldname, value.dn]
               end
+            elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
+              ops.push [:add, fieldname, value.to_s]
+            elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
+              ops.push [:add, fieldname, value.to_s.upcase]
             else
               ops.push [:add, fieldname, value]
             end
@@ -537,12 +546,11 @@ class GedcomDate < GedcomEntry
     day = Integer(day || 0)
     
     parent.addfields(date: raw,
-                     # Don't know why these need to be coerced to strings to be accepted by openldap
-                     year: year.to_s,
-                     month: month.to_s,
-                     day: day.to_s,
-                     relativetodate: relative.to_s,
-                     baddata: baddata.to_s.upcase)
+                     year: year,
+                     month: month,
+                     day: day,
+                     relativetodate: relative,
+                     baddata: baddata)
   end
 end
 
@@ -638,7 +646,6 @@ class GedcomEven < GedcomEntry
   attr_ldap :relativetodate, :relativetodate
   attr_ldap :baddata, :baddata
   attr_gedcom :place, :plac
-  attr_ldap :place, :gedcom
   attr_reader :description
   attr_gedcom :description, :type
   attr_ldap :description, :description
