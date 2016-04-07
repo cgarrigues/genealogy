@@ -111,23 +111,20 @@ class User
     end
   end
   
-  def sources
-    unless @sources
-      @sources = []
-      unless @ldap.search(
-        base: @dn,
-        scope: Net::LDAP::SearchScope_SingleLevel,
-        filter: Net::LDAP::Filter.eq("objectclass", "gedcomSource"),
-        return_result: false,
-      ) do |entry|
-          source = classfromentry(entry).new ldapentry: entry, user: self
-          @objectfromdn[source.dn] = source
-          @sources.push source
-        end
-        raise "Couldn't search #{@dn} for sources: #{@ldap.get_operation_result.message}"
+
+  def findobjects(ldapclass, base)
+    unless @ldap.search(
+      base: base,
+      scope: Net::LDAP::SearchScope_SingleLevel,
+      filter: Net::LDAP::Filter.eq("objectclass", ldapclass),
+      return_result: false,
+    ) do |entry|
+        object = classfromentry(entry).new ldapentry: entry, user: self
+        @objectfromdn[object.dn] = object
+        yield object
       end
+      raise "Couldn't search #{@dn} for events: #{@ldap.get_operation_result.message}"
     end
-    @sources
   end
 
   def findname(first: nil, last: nil)
@@ -141,7 +138,6 @@ class User
         dn = "givenName=#{first},givenname=#{firstinit},sn=#{last},#{@dn}"
       end
     end
-    puts dn.inspect
     unless @ldap.search(
       base: dn,
       filter: Net::LDAP::Filter.eq("objectclass", "gedcomIndividual"),
@@ -151,6 +147,9 @@ class User
         indi = classfromentry(entry).new ldapentry: entry, user: self
         @objectfromdn[indi.dn] = indi
         puts indi
+        findobjects('gedcomEvent', indi.dn) do |event|
+          puts "    #{event}"
+        end
       end
       raise "Couldn't search #{@dn} for names: #{@ldap.get_operation_result.message}"
     end
@@ -874,7 +873,6 @@ class GedcomIndi < GedcomEntry
   attr_ldap :death, :deathdn
   attr_accessor :mother
   attr_accessor :father
-  attr_multi :events
   attr_reader :names
   attr_multi :names
   attr_gedcom :names, :name
@@ -892,7 +890,6 @@ class GedcomIndi < GedcomEntry
   def initialize(source: nil, **options)
     #puts "#{self.class} #{arg.inspect}"
     @names = []
-    @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
     super
   end
 
@@ -914,62 +911,17 @@ class GedcomIndi < GedcomEntry
     "#{@fullname} #{birthdate} - #{deathdate}"
   end
 
-  def addevent(event, date = event.date)
-    if date
-      @events[date.year][date.month][date.day][date.relative].push event
-    else
-      @events[999999][0][0][0].push event
-    end
-  end
-
-  def delevent(event, date)
-    if date
-      @events[date.year][date.month][date.day][date.relative].delete_if {|i| i == event}
-    else
-      @events[999999][0][0][0].delete_if {|i| i == event}
-    end
-  end
-
-  def showevents
-    puts "Events for #{self.inspect}:"
-    @events.keys.sort.each do |year|
-      @events[year].keys.sort.each do |month|
-        @events[year][month].keys.sort.each do |day|
-          @events[year][month][day].keys.sort.each do |relative|
-            puts "  #{@events[year][month][day][relative].inspect}"
-          end
-        end
-      end
-    end
-  end
-  
   def addsource(source)
     addfields(sources: source)
-    @events.keys.each do |year|
-      @events[year].keys.each do |month|
-        @events[year][month].keys.each do |day|
-          @events[year][month][day].keys.each do |relative|
-            @events[year][month][day][relative].each do |event|
-              event.addsource source
-            end
-          end
-        end
-      end
+    @user.findobjects('gedcomEvent', @dn) do |event|
+      event.addsource source
     end
   end
 
   def delsource(source)
     delfields(sources: source)
-    @events.keys.each do |year|
-      @events[year].keys.each do |month|
-        @events[year][month].keys.each do |day|
-          @events[year][month][day].keys.each do |relative|
-            @events[year][month][day][relative].each do |event|
-              event.delsource source
-            end
-          end
-        end
-      end
+    @user.findobjects('gedcomEvent', @dn) do |event|
+      event.delsource source
     end
   end
   
@@ -992,20 +944,14 @@ class GedcomIndi < GedcomEntry
           end
         end
       elsif fieldname == :birt
-        addevent value, nil
       elsif fieldname == :deat
-        addevent value, nil
       elsif fieldname == :buri
-        addevent value, nil
         options.delete fieldname
       elsif fieldname == :bapm
-        addevent value, nil
         options.delete fieldname
       elsif fieldname == :even
-        addevent value, nil
         options.delete fieldname
       elsif fieldname == :adop
-        addevent value, nil
       elsif fieldname == :sour
         addsource value
         options.delete fieldname

@@ -111,13 +111,6 @@ attributetype ( 1.3.6.1.4.1.19106.1.1.13
 	SINGLE-VALUE
         )
 	
-attributetype ( 1.3.6.1.4.1.19106.1.1.14
-	NAME 'eventDNs'
-	DESC 'DNs of events in the individuals life'
-        EQUALITY distinguishedNameMatch
-        SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
-        )
-	
 attributetype ( 1.3.6.1.4.1.19106.1.1.15
 	NAME 'sourceDNs'
 	DESC 'DNs of sources for this record'
@@ -218,7 +211,7 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.2
 	DESC 'a gedcom individual'
 	STRUCTURAL
 	MUST (objectClass $ uniqueIdentifier )
-	MAY ( cn $ givenName $ sn $ initials $ nameDNs $ gender $ birthDN $ baptismDN $ deathDN $ motherDN $ fatherDN $ eventDNs $ sourceDNs)
+	MAY ( cn $ givenName $ sn $ initials $ nameDNs $ gender $ birthDN $ baptismDN $ deathDN $ motherDN $ fatherDN $ sourceDNs)
 	)
 
 objectclass ( 1.3.6.1.4.1.19106.1.2.3

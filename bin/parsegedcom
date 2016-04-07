@@ -6,7 +6,7 @@ require 'genealogy'
 
 user = User.new username: "admin", password: "4zY!4*s#bPMO"
 user.openldap do
-  user.sources.each do |source|
+  user.findobjects("gedcomSource", user.dn) do |source|
     source.parsefile
   end
 end
