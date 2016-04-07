@@ -107,7 +107,12 @@ class User
   
   def modifyattributes(dn, ops)
     unless @ldap.modify dn: dn, operations: ops
-      raise "Couldn't modify attributes #{ops} for #{dn}: #{@ldap.get_operation_result.message}"
+      message = @ldap.get_operation_result.message
+      if message =~ /Attribute or Value Exists/
+        puts "Couldn't modify attributes #{ops} for #{dn}: #{message}"
+      else
+        raise "Couldn't modify attributes #{ops} for #{dn}: #{message}"
+      end
     end
   end
   
