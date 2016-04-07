@@ -189,7 +189,7 @@ attributetype ( 1.3.6.1.4.1.19106.1.1.23
 	)
 
 objectclass ( 1.3.6.1.4.1.19106.1.2.1
-	NAME 'gedcomSour'
+	NAME 'gedcomSource'
 	DESC 'a gedcom source file'
 	STRUCTURAL
 	MUST (objectClass $ uniqueIdentifier )
@@ -197,7 +197,7 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.1
 	)
 
 objectclass ( 1.3.6.1.4.1.19106.1.2.2
-	NAME 'gedcomIndi'
+	NAME 'gedcomIndividual'
 	DESC 'a gedcom individual'
 	STRUCTURAL
 	MUST (objectClass $ uniqueIdentifier )
@@ -213,7 +213,7 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.3
 	)
 
 objectclass ( 1.3.6.1.4.1.19106.1.2.4
-	NAME 'gedcomEven'
+	NAME 'gedcomEvent'
 	DESC 'a gedcom event'
 	STRUCTURAL
 	MUST (objectClass $ description)
@@ -221,7 +221,7 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.4
 	)
 
 objectclass ( 1.3.6.1.4.1.19106.1.2.5
-	NAME 'gedcomBirt'
+	NAME 'gedcomBirth'
 	DESC 'a gedcom birth'
 	AUXILIARY
 	MUST (individualDN)

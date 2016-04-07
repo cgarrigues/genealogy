@@ -117,7 +117,7 @@ class User
       unless @ldap.search(
         base: @dn,
         scope: Net::LDAP::SearchScope_SingleLevel,
-        filter: Net::LDAP::Filter.eq("objectclass", "gedcomSour"),
+        filter: Net::LDAP::Filter.eq("objectclass", "gedcomSource"),
         return_result: false,
       ) do |entry|
           source = classfromentry(entry).new ldapentry: entry, user: self
@@ -139,7 +139,7 @@ class User
     end
     unless @ldap.search(
       base: dn,
-      filter: Net::LDAP::Filter.eq("objectclass", "gedcomIndi"),
+      filter: Net::LDAP::Filter.eq("objectclass", "gedcomIndividual"),
       deref: Net::LDAP::DerefAliases_Search,
       return_result: false,
     ) do |entry|
@@ -624,7 +624,7 @@ class GedcomPlac < GedcomEntry
 end
 
 class GedcomEven < GedcomEntry
-  ldap_class :gedcomeven
+  ldap_class :gedcomevent
   attr_reader :date
   attr_ldap :date, :gedcomdate
   attr_ldap :year, :year
@@ -686,7 +686,7 @@ class GedcomEven < GedcomEntry
 end
 
 class GedcomBirt < GedcomEven
-  ldap_class :gedcombirt
+  ldap_class :gedcombirth
   attr_reader :individual
   attr_ldap :individual, :individualdn
 
@@ -813,7 +813,7 @@ class GedcomBapm < GedcomEven
 end
 
 class GedcomIndi < GedcomEntry
-  ldap_class :gedcomindi
+  ldap_class :gedcomindividual
   attr_reader :gender, :sex
   attr_reader :birth
   attr_gedcom :birth, :birt
@@ -1115,7 +1115,7 @@ class GedcomType < GedcomString
 end
 
 class GedcomSour < GedcomEntry
-  ldap_class :gedcomsour
+  ldap_class :gedcomsource
   attr_reader :version
   attr_gedcom :version, :vers
   attr_ldap :version, :version
