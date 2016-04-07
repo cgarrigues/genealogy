@@ -736,18 +736,24 @@ class GedcomDeat < GedcomEven
 
   def to_s
     if date
-      "#{@individual.names[0]} #{date} #{@place}"
+      "#{@description} #{date} #{@place}"
     else
-      "#{@individual.names[0]} ? #{@place}"
+      "#{@description} ? #{@place}"
     end
   end
 end
 
 class GedcomBuri < GedcomEven
+  ldap_class :gedcomburial
   attr_reader :individual
+  attr_ldap :individual, :individualdn
 
-  def initialize(parent: nil, **options)
-    super(individual: parent, **options)
+  def initialize(parent: nil, ldapentry: nil, **options)
+    if ldapentry
+      super(ldapentry: ldapentry, **options)
+    else
+      super(individual: parent, parent: parent, description: "Burial of #{parent.fullname.gsub(/[,"]/, '')}", **options)
+    end
   end
 
   def to_s
@@ -757,9 +763,9 @@ class GedcomBuri < GedcomEven
       name = ""
     end
     if @date
-      "#{name} #{@date} #{@place}"
+      "#{description} #{@date} #{@place}"
     else
-      "#{name} #{@place}"
+      "#{description} #{@place}"
     end
   end
 end
@@ -779,12 +785,19 @@ class GedcomDiv < GedcomEven
 end
 
 class GedcomAdop < GedcomEven
+  ldap_class :gedcomadoption
   attr_reader :individual
+  attr_ldap :individual, :individualdn
   attr_reader :parents
+  attr_ldap :parents, :parentdns
 
-  def initialize(parent: nil, **options)
+  def initialize(parent: nil, ldapentry: nil, **options)
     @parents = []
-    super(individual: parent, **options)
+    if ldapentry
+      super(ldapentry: ldapentry, **options)
+    else
+      super(individual: parent, parent: parent, description: "Adoption of #{parent.fullname.gsub(/[,"]/, '')}", **options)
+    end
   end
 
   def addfields(**options)
@@ -829,6 +842,25 @@ class GedcomAdop < GedcomEven
 end
 
 class GedcomBapm < GedcomEven
+  ldap_class :gedcombaptism
+  attr_reader :individual
+  attr_ldap :individual, :individualdn
+
+  def initialize(parent: nil, ldapentry: nil, **options)
+    if ldapentry
+      super(ldapentry: ldapentry, **options)
+    else
+      super(individual: parent, parent: parent, description: "Baptism of #{parent.fullname.gsub(/[,"]/, '')}", **options)
+    end
+  end
+
+  def to_s
+    if date
+      "#{@description} #{date} #{@place}"
+    else
+      "#{@description} #{@place}"
+    end
+  end
 end
 
 class GedcomIndi < GedcomEntry

@@ -179,6 +179,7 @@ attributetype ( 1.3.6.1.4.1.19106.1.1.22
 	DESC 'DNs of individual'
         EQUALITY distinguishedNameMatch
         SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
+	SINGLE-VALUE
         )
 	
 attributetype ( 1.3.6.1.4.1.19106.1.1.23
@@ -186,9 +187,17 @@ attributetype ( 1.3.6.1.4.1.19106.1.1.23
 	DESC 'Is there bad data in here?'
 	EQUALITY booleanMatch
 	SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
+	SINGLE-VALUE
 	)
 
 attributetype ( 1.3.6.1.4.1.19106.1.1.24
+	NAME 'parentDNs'
+	DESC 'DNs of adoptive parents'
+        EQUALITY distinguishedNameMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
+        )
+	
+attributetype ( 1.3.6.1.4.1.19106.1.1.25
 	NAME 'cause'
 	DESC 'cause of death'
         EQUALITY caseIgnoreIA5Match
@@ -235,7 +244,7 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.5
 	MUST (individualDN)
 	)
 
-objectclass ( 1.3.6.1.4.1.19106.1.2.56
+objectclass ( 1.3.6.1.4.1.19106.1.2.6
 	NAME 'gedcomDeath'
 	DESC 'a gedcom death'
 	AUXILIARY
@@ -243,3 +252,24 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.56
 	MAY (cause)
 	)
 
+objectclass ( 1.3.6.1.4.1.19106.1.2.7
+	NAME 'gedcomBurial'
+	DESC 'a gedcom burial'
+	AUXILIARY
+	MUST (individualDN )
+	)
+
+objectclass ( 1.3.6.1.4.1.19106.1.2.8
+	NAME 'gedcomBaptism'
+	DESC 'a gedcom baptism'
+	AUXILIARY
+	MUST (individualDN )
+	)
+
+objectclass ( 1.3.6.1.4.1.19106.1.2.9
+	NAME 'gedcomAdoption'
+	DESC 'a gedcom adoption'
+	AUXILIARY
+	MUST (individualDN )
+	MAY (parentDNs)
+	)
