@@ -77,6 +77,14 @@ class User
     @objectfromdn = Hash.new { |hash, key| hash[key] = getobjectfromdn key}
   end
 
+  def classfromentry(entry)
+    objectclasses = entry.objectclass.map {|klass| klass.downcase.to_sym}
+    ldapclass = objectclasses.detect do |ldapclass|
+      GedcomEntry.getclassfromldapclass ldapclass
+    end
+    GedcomEntry.getclassfromldapclass ldapclass
+  end
+
   def getobjectfromdn(dn)
     object = nil
     unless @ldap.search(
@@ -84,12 +92,7 @@ class User
       scope: Net::LDAP::SearchScope_BaseObject,
       return_result: false,
     ) do |entry|
-        objectclasses = entry.objectclass.map {|klass| klass.downcase.to_sym}
-        ldapclass = objectclasses.detect do |ldapclass|
-          GedcomEntry.getclassfromldapclass ldapclass
-        end
-        klass = GedcomEntry.getclassfromldapclass ldapclass
-        object = klass.new ldapentry: entry, user: self
+        object = classfromentry(entry).new ldapentry: entry, user: self
       end
       raise "Couldn't find #{dn}: #{@ldap.get_operation_result.message}"
     end
@@ -117,7 +120,7 @@ class User
         filter: Net::LDAP::Filter.eq("objectclass", "gedcomSour"),
         return_result: false,
       ) do |entry|
-          source = GedcomSour.new ldapentry: entry, user: self
+          source = classfromentry(entry).new ldapentry: entry, user: self
           @objectfromdn[source.dn] = source
           @sources.push source
         end
@@ -140,7 +143,7 @@ class User
       deref: Net::LDAP::DerefAliases_Search,
       return_result: false,
     ) do |entry|
-        indi = GedcomIndi.new ldapentry: entry, user: self
+        indi = classfromentry(entry).new ldapentry: entry, user: self
         @objectfromdn[indi.dn] = indi
         puts indi
       end
