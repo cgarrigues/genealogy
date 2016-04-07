@@ -133,15 +133,15 @@ class User
   end
 
   def findname(first: nil, last: nil)
-    if first == nil
-      dn = "sn=#{last},#{@dn}"
-    else
+    if first
       firstinit = first[0]
       if firstinit == first
         dn = "givenName=#{first},sn=#{last},#{@dn}"
       else
         dn = "givenName=#{first},givenname=#{firstinit},sn=#{last},#{@dn}"
       end
+    else
+      dn = "sn=#{last},#{@dn}"
     end
     unless @ldap.search(
       base: dn,
@@ -969,21 +969,22 @@ class GedcomIndi < GedcomEntry
   end
   
   def addfields(**options)
+    newoptions = {}
     options.each do |fieldname, value|
       if fieldname == :name
         unless @fullname
           # If there are more than one name defined, populate with the first one; the others will be findable via the name objects
           if fullname = value.to_s
-            addfields(fullname: fullname)
+            newoptions[:fullname] = fullname
           end
           if first = value.first
-            addfields(first: first)
+            newoptions[:first] = first
           end
           if last = value.last
-            addfields(last: last)
+            newoptions[:last] = last
           end
           if suffix = value.suffix
-            addfields(suffix: suffix)
+            newoptions[:suffix] = suffix
           end
         end
       elsif fieldname == :buri
@@ -993,6 +994,9 @@ class GedcomIndi < GedcomEntry
       elsif fieldname == :even
         options.delete fieldname
       end
+    end
+    newoptions.each do |fieldname, value|
+      options[fieldname] = value
     end
     super(**options)
   end
@@ -1026,7 +1030,12 @@ class GedcomName < GedcomEntry
   
   def initialize(arg: "", fieldname: fieldname, parent: nil, **options)
     (first, last, suffix) = arg.split(/\s*\/[\s*,]*/)
-    $names[last][first][suffix] = self
+    if first == ''
+      first = nil
+    end
+    if suffix == ''
+      suffix = nil
+    end
     super(fieldname: fieldname, parent: parent, first: first, last: last, suffix: suffix, **options)
   end
   
