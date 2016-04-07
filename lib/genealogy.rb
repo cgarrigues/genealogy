@@ -130,13 +130,18 @@ class User
     @sources
   end
 
-  def findname(first: '', last: '')
-    firstinit = first[0]
-    if firstinit == first
-      dn = "givenName=#{first},sn=#{last},#{@dn}"
+  def findname(first: nil, last: nil)
+    if first == nil
+      dn = "sn=#{last},#{@dn}"
     else
-      dn = "givenName=#{first},givenname=#{firstinit},sn=#{last},#{@dn}"
+      firstinit = first[0]
+      if firstinit == first
+        dn = "givenName=#{first},sn=#{last},#{@dn}"
+      else
+        dn = "givenName=#{first},givenname=#{firstinit},sn=#{last},#{@dn}"
+      end
     end
+    puts dn.inspect
     unless @ldap.search(
       base: dn,
       filter: Net::LDAP::Filter.eq("objectclass", "gedcomIndividual"),
@@ -708,11 +713,18 @@ class GedcomBirt < GedcomEven
 end
 
 class GedcomDeat < GedcomEven
+  ldap_class :gedcomdeath
   attr_reader :individual
+  attr_ldap :individual, :individualdn
   attr_gedcom :cause, :caus
+  attr_ldap :cause, :cause
 
-  def initialize(parent: nil, **options)
-    super(individual: parent, **options)
+  def initialize(parent: nil, ldapentry: nil, **options)
+    if ldapentry
+      super(ldapentry: ldapentry, **options)
+    else
+      super(individual: parent, parent: parent, description: "Death of #{parent.fullname.gsub(/[,"]/, '')}", **options)
+    end
   end
 
   def to_s
@@ -820,6 +832,7 @@ class GedcomIndi < GedcomEntry
   attr_ldap :birth, :birthdn
   attr_reader :baptism
   attr_gedcom :death, :deat
+  attr_ldap :death, :deathdn
   attr_accessor :mother
   attr_accessor :father
   attr_multi :events
