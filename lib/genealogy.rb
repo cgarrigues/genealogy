@@ -143,11 +143,34 @@ class User
         indi = GedcomIndi.new ldapentry: entry, user: self
         @objectfromdn[indi.dn] = indi
         puts indi
-        birthevent = @objectfromdn[indi.birth]
-        puts birthevent
       end
       raise "Couldn't search #{@dn} for sources: #{@ldap.get_operation_result.message}"
     end
+  end
+end
+
+class LdapAlias
+  attr_reader :dn
+
+  def initialize(dn, user)
+    @dn = dn
+    @user = user
+  end
+
+  def object
+    @user.objectfromdn[dn]
+  end
+
+  def inspect
+    "#<LdapAlias #{dn}>"
+  end
+
+  def method_missing(m, *args, &block)  
+    object.send m, *args, &block
+  end  
+
+  def respond_to?(method)
+    super || object.respond_to?(method)
   end
 end
 
@@ -210,7 +233,7 @@ class GedcomEntry
       ldapentry.each do |fieldname, value|
         syntax = @user.attributemetadata[fieldname][:syntax]
         if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
-          puts "#{fieldname.inspect} is a DN"
+          value.map! {|dn| LdapAlias.new dn, @user}
         end
         fieldname = @@ldaptofield[self.class][fieldname] || @@ldaptofield[self.class.superclass][fieldname] || fieldname
         if @@multivaluevariables[self.class].include?(fieldname) || @@multivaluevariables[self.class.superclass].include?(fieldname)
