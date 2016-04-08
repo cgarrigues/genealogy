@@ -2,6 +2,7 @@ $LOAD_PATH.unshift("#{File.dirname(__FILE__)}/../lib")
 require "genealogy/version"
 require 'ansel'
 require 'net/ldap'
+require 'net/ldap/dn'
 require 'set'
 
 $names = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new}}
@@ -33,7 +34,7 @@ class User
 
   def initialize(username: username, password: password)
     @base = 'dc=deepeddy,dc=com'
-    @dn = "cn=#{username},#{@base}"
+    @dn = "cn=#{Net::LDAP::DN.escape(username)},#{@base}"
     @ldap = Net::LDAP.new(
       host: '192.168.99.100',
       port: 389,
@@ -136,12 +137,12 @@ class User
     if first
       firstinit = first[0]
       if firstinit == first
-        dn = "givenName=#{first},sn=#{last},#{@dn}"
+        dn = "givenName=#{Net::LDAP::DN.escape(first)},sn=#{Net::LDAP::DN.escape(last)},#{@dn}"
       else
-        dn = "givenName=#{first},givenname=#{firstinit},sn=#{last},#{@dn}"
+        dn = "givenName=#{Net::LDAP::DN.escape(first)},givenname=#{Net::LDAP::DN.escape(firstinit)},sn=#{Net::LDAP::DN.escape(last)},#{@dn}"
       end
     else
-      dn = "sn=#{last},#{@dn}"
+      dn = "sn=#{Net::LDAP::DN.escape(last)},#{@dn}"
     end
     unless @ldap.search(
       base: dn,
@@ -305,8 +306,7 @@ class GedcomEntry
     (rdnfield, rdnvalue) = self.rdn
     rdnfield = @@fieldtoldap[self.class][rdnfield] || @@fieldtoldap[self.class.superclass][rdnfield] || rdnfield
     unless @noldapobject
-      @dn = "#{rdnfield}=#{rdnvalue},#{parentdn}"
-
+      @dn = "#{rdnfield}=#{Net::LDAP::DN.escape(rdnvalue)},#{parentdn}"
       unless @user.ldap.search(
         base: @dn,
         scope: Net::LDAP::SearchScope_BaseObject,
@@ -729,12 +729,7 @@ class GedcomEven < GedcomEntry
   end
 
   def rdn
-    if @description
-      description = @description.gsub(/[,"]/, '')
-      @noldapobject = false
-    else
-      @noldapobject = true
-    end
+    @noldapobject = not(@description)
     [:description, description]
   end
 end
@@ -748,7 +743,7 @@ class GedcomBirt < GedcomEven
     if ldapentry
       super(ldapentry: ldapentry, **options)
     else
-      super(individual: parent, parent: parent, description: "Birth of #{parent.fullname.gsub(/[,"]/, '')}", **options)
+      super(individual: parent, parent: parent, description: "Birth of #{parent.fullname}", **options)
     end
   end
 
@@ -772,7 +767,7 @@ class GedcomDeat < GedcomEven
     if ldapentry
       super(ldapentry: ldapentry, **options)
     else
-      super(individual: parent, parent: parent, description: "Death of #{parent.fullname.gsub(/[,"]/, '')}", **options)
+      super(individual: parent, parent: parent, description: "Death of #{parent.fullname}", **options)
     end
   end
 
@@ -794,7 +789,7 @@ class GedcomBuri < GedcomEven
     if ldapentry
       super(ldapentry: ldapentry, **options)
     else
-      super(individual: parent, parent: parent, description: "Burial of #{parent.fullname.gsub(/[,"]/, '')}", **options)
+      super(individual: parent, parent: parent, description: "Burial of #{parent.fullname}", **options)
     end
   end
 
@@ -838,7 +833,7 @@ class GedcomAdop < GedcomEven
     if ldapentry
       super(ldapentry: ldapentry, **options)
     else
-      super(individual: parent, parent: parent, description: "Adoption of #{parent.fullname.gsub(/[,"]/, '')}", **options)
+      super(individual: parent, parent: parent, description: "Adoption of #{parent.fullname}", **options)
     end
   end
 
@@ -892,7 +887,7 @@ class GedcomBapm < GedcomEven
     if ldapentry
       super(ldapentry: ldapentry, **options)
     else
-      super(individual: parent, parent: parent, description: "Baptism of #{parent.fullname.gsub(/[,"]/, '')}", **options)
+      super(individual: parent, parent: parent, description: "Baptism of #{parent.fullname}", **options)
     end
   end
 
@@ -1003,7 +998,6 @@ class GedcomIndi < GedcomEntry
 end
 
 class GedcomChar < GedcomEntry
-  attr_reader :charset
   
   def initialize(fieldname: nil, arg: "", parent: nil, **options)
     if arg == 'ANSEL'
@@ -1042,7 +1036,7 @@ class GedcomName < GedcomEntry
   def addtoldap
     dn=@user.dn
     if @last
-      clean = @last.gsub(/[,"]/, '')
+      clean = Net::LDAP::DN.escape(@last)
       if clean == ''
         clean = 'unknown'
       end
@@ -1065,7 +1059,7 @@ class GedcomName < GedcomEntry
         firstinitial = @first[0]
         
         unless firstinitial == @first
-          dn = "givenName=#{firstinitial},#{dn}"
+          dn = "givenName=#{Net::LDAP::DN.escape(firstinitial)},#{dn}"
           unless @user.ldap.search(
             base: dn,
             scope: Net::LDAP::SearchScope_BaseObject,
@@ -1078,7 +1072,7 @@ class GedcomName < GedcomEntry
           end
         end
 
-        clean = @first.gsub(/[,"]/, '')
+        clean = Net::LDAP::DN.escape(@first)
         if clean == ''
           clean = 'unknown'
         end
@@ -1095,7 +1089,7 @@ class GedcomName < GedcomEntry
         end
         
         if @suffix
-          clean = @suffix.gsub(/[,"]/, '')
+          clean = Net::LDAP::DN.escape(@suffix)
           if clean == ''
             clean = 'unknown'
           end
@@ -1115,7 +1109,7 @@ class GedcomName < GedcomEntry
       @dn = dn
 
       uid = parent.label.to_s
-      aliasdn = "uniqueidentifier=#{uid},#{dn}"
+      aliasdn = "uniqueidentifier=#{Net::LDAP::DN.escape(uid)},#{dn}"
       attrs = {
         uniqueidentifier: uid,
         objectclass: ["alias", "extensibleObject"],
@@ -1323,12 +1317,7 @@ class GedcomPage < GedcomEntry
   end
 
   def rdn
-    if @pageno
-      pageno = @pageno.gsub(/[,"]/, '')
-      @noldapobject = false
-    else
-      @noldapobject = true
-    end
+    @noldapobject = not(@pageno)
     [:pageno, pageno]
   end
 
