@@ -306,35 +306,39 @@ class GedcomEntry
     (rdnfield, rdnvalue) = self.rdn
     rdnfield = @@fieldtoldap[self.class][rdnfield] || @@fieldtoldap[self.class.superclass][rdnfield] || rdnfield
     unless @noldapobject
-      @dn = "#{rdnfield}=#{Net::LDAP::DN.escape(rdnvalue)},#{parentdn}"
-      unless @user.ldap.search(
-        base: @dn,
-        scope: Net::LDAP::SearchScope_BaseObject,
-        return_result: false,
-      )
-        @user.objectfromdn[@dn] = self
-        attrs = {}
-        attrs[:objectclass] = ["top", @@classtoldapclass[self.class].to_s]
-        attrs[rdnfield] = rdnvalue
-        if ldapsuperclass = @@classtoldapclass[self.class.superclass]
-          attrs[:objectclass].push ldapsuperclass.to_s
-        end
-        ldapfields.each do |fieldname|
-          ldapfieldname = @@fieldtoldap[self.class][fieldname] || @@fieldtoldap[self.class.superclass][fieldname] || fieldname
-          if value = instance_variable_get("@#{fieldname}".to_sym)
-            unless value == [] or value == ""
-              if value.kind_of? GedcomEntry
-                if value.dn
-                  attrs[ldapfieldname] = value.dn
+      if rdnvalue.is_a? Symbol
+        puts "#{rdnfield.inspect} in #{self.inspect} is an unresolved reference (#{rdnvalue.inspect})"
+      else
+        @dn = "#{rdnfield}=#{Net::LDAP::DN.escape(rdnvalue)},#{parentdn}"
+        unless @user.ldap.search(
+          base: @dn,
+          scope: Net::LDAP::SearchScope_BaseObject,
+          return_result: false,
+        )
+          @user.objectfromdn[@dn] = self
+          attrs = {}
+          attrs[:objectclass] = ["top", @@classtoldapclass[self.class].to_s]
+          attrs[rdnfield] = rdnvalue
+          if ldapsuperclass = @@classtoldapclass[self.class.superclass]
+            attrs[:objectclass].push ldapsuperclass.to_s
+          end
+          ldapfields.each do |fieldname|
+            ldapfieldname = @@fieldtoldap[self.class][fieldname] || @@fieldtoldap[self.class.superclass][fieldname] || fieldname
+            if value = instance_variable_get("@#{fieldname}".to_sym)
+              unless value == [] or value == ""
+                if value.kind_of? GedcomEntry
+                  if value.dn
+                    attrs[ldapfieldname] = value.dn
+                  end
+                else
+                  attrs[ldapfieldname] = value
                 end
-              else
-                attrs[ldapfieldname] = value
               end
             end
           end
-        end
-        unless @user.ldap.add dn: @dn, attributes: attrs
-          raise "Couldn't add #{self.inspect} at #{@dn} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
+          unless @user.ldap.add dn: @dn, attributes: attrs
+            raise "Couldn't add #{self.inspect} at #{@dn} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
+          end
         end
       end
     end
@@ -1311,10 +1315,12 @@ class GedcomPage < GedcomEntry
   attr_gedcom :source, :sour
   
   def initialize(arg: "", parent: nil, **options)
-    super(pageno: arg, source: parent, parent: parent, **options)
-    #Change the source's parent to point to us instead of the source itself.
-    @source.parent.delfields(sour: parent)
-    @source.parent.addfields(sour: self)
+    if parent.dn
+      super(pageno: arg, source: parent, parent: parent, **options)
+      #Change the source's parent to point to us instead of the source itself.
+      @source.parent.delfields(sour: parent)
+      @source.parent.addfields(sour: self)
+    end
   end
 
   def rdn
