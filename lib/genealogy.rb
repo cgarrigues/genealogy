@@ -154,7 +154,7 @@ class User
         @objectfromdn[indi.dn] = indi
         puts indi
         findobjects('gedcomEvent', indi.dn) do |event|
-          puts "    #{event}"
+          puts "    #{event.date}\t#{event.description}"
         end
       end
       raise "Couldn't search #{@dn} for names: #{@ldap.get_operation_result.message}"
