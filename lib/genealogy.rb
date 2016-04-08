@@ -238,8 +238,7 @@ class GedcomEntry
     if @label
       @source.labels[@label] = self
       @source.references[@label].each do |ref|
-        ref.parent.delfields(ref.fieldname => ref)
-        ref.parent.addfields(ref.fieldname => self)
+        ref.parent.modifyfields(ref.fieldname => {ref => self})
       end
     end
     if ldapentry
@@ -396,7 +395,7 @@ class GedcomEntry
     end
   end
   
-  def delfields(**options)
+  def deletefields(**options)
     ops = []
     options.each do |fieldname, value|
       fieldname = @@gedcomtofield[self.class][fieldname] || @@gedcomtofield[self.class.superclass][fieldname] || fieldname
@@ -428,6 +427,50 @@ class GedcomEntry
               ops.push [:delete, fieldname, value.to_s.upcase]
             else
               ops.push [:delete, fieldname, value]
+            end
+          end
+        end
+      end
+    end
+    unless ops == []
+      @user.modifyattributes @dn, ops
+    end
+  end
+  
+  def modifyfields(**options)
+    ops = []
+    options.each do |fieldname, valuepairs|
+      valuepairs.each do |oldvalue, newvalue|
+        fieldname = @@gedcomtofield[self.class][fieldname] || @@gedcomtofield[self.class.superclass][fieldname] || fieldname
+        if @@multivaluevariables[self.class].include?(fieldname) || @@multivaluevariables[self.class.superclass].include?(fieldname)
+          if oldvalues = instance_variable_get("@#{fieldname}".to_sym)
+            instance_variable_set "@#{fieldname}".to_sym, oldvalues.delete_if {|i| i == oldvalue}
+          end
+        else
+          instance_variable_set "@#{fieldname}".to_sym, nil
+        end
+        if @user and @dn
+          if fieldname = (@@fieldtoldap[self.class][fieldname] || @@fieldtoldap[self.class.superclass][fieldname])
+            if @noldapobject
+              (rdnfield, rdnvalue) = self.rdn
+              if rdnfield == fieldname
+                # We weren't in LDAP, but now we can be added
+                puts "delayed addition of #{@dn} to ldap"
+                self.addtoldap
+              end
+            else
+              syntax = @user.attributemetadata[fieldname][:syntax]
+              if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
+                if newvalue.dn
+                  ops.push [:replace, fieldname, [oldvalue.dn, newvalue.dn]]
+                end
+              elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
+                ops.push [:delete, fieldname, [oldvalue.to_s, newvalue.to_s]]
+              elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
+                ops.push [:delete, fieldname, [oldvalue.to_s.upcase, newvalue.to_s.upcase]]
+              else
+                ops.push [:delete, fieldname, [oldvalue, newvalue]]
+              end
             end
           end
         end
@@ -730,7 +773,7 @@ class GedcomEven < GedcomEntry
   end
 
   def delsource(source)
-    delfields(sources: source)
+    deletefields(sources: source)
   end
 
   def rdn
@@ -860,7 +903,7 @@ class GedcomAdop < GedcomEven
     super(**options)
   end
 
-  def delfields(**options)
+  def deletefields(**options)
     options.each do |fieldname, value|
       if fieldname == :famc
         if value.respond_to? :delevent
@@ -962,7 +1005,7 @@ class GedcomIndi < GedcomEntry
   end
 
   def delsource(source)
-    delfields(sources: source)
+    deletefields(sources: source)
     @user.findobjects('gedcomEvent', @dn) do |event|
       event.delsource source
     end
@@ -1318,8 +1361,7 @@ class GedcomPage < GedcomEntry
     if parent.dn
       super(pageno: arg, source: parent, parent: parent, **options)
       #Change the source's parent to point to us instead of the source itself.
-      @source.parent.delfields(sour: parent)
-      @source.parent.addfields(sour: self)
+      @source.parent.modifyfields(sour: {parent => self})
     end
   end
 
