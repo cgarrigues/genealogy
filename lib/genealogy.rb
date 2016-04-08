@@ -110,7 +110,7 @@ class User
     unless @ldap.modify dn: dn, operations: ops
       message = @ldap.get_operation_result.message
       if message =~ /Attribute or Value Exists/
-        puts "Couldn't modify attributes #{ops} for #{dn}: #{message}"
+        #puts "Couldn't modify attributes #{ops} for #{dn}: #{message}"
       else
         raise "Couldn't modify attributes #{ops} for #{dn}: #{message}"
       end
@@ -692,7 +692,7 @@ class GedcomPlac < GedcomEntry
       place.label = label
     end
     if parent
-      place.addevent parent
+      place.addfields(even: parent)
       parent.addfields(fieldname => place)
     end
   end
@@ -701,14 +701,6 @@ class GedcomPlac < GedcomEntry
     @places[place.name] = place
   end
   
-  def addevent(event, date = event.date)
-    if date
-      @events[@year][@month][@day][@relativetodate].push event
-    else
-      @events[999999][0][0][0].push event
-    end
-  end
-
   def delevent(event, date)
     if date
       @events[@year][@month][@day][@relativetodate].delete_if {|i| i == event}
@@ -888,14 +880,12 @@ class GedcomAdop < GedcomEven
   def addfields(**options)
     options.each do |fieldname, value|
       if fieldname == :famc
-        if value.respond_to? :addevent
-          value.addevent self, @date
-          if value.husband
-            @parents.push value.husband
-          end
-          if value.wife
-            @parents.push value.wife
-          end
+        value.addfields(even: self)
+        if value.respond_to?(:husband) and value.husband
+          @parents.push value.husband
+        end
+        if value.respond_to?(:wife) and value.wife
+          @parents.push value.wife
         end
         options.delete fieldname
       end
@@ -906,14 +896,12 @@ class GedcomAdop < GedcomEven
   def deletefields(**options)
     options.each do |fieldname, value|
       if fieldname == :famc
-        if value.respond_to? :delevent
-          value.delevent self, @date
-          if value.husband
-            @parents.delete_if {|i| i == value.husband}
-          end
-          if value.wife
-            @parents.delete_if {|i| i == value.wife}
-          end
+        value.deletefields(even: self)
+        if value.husband
+          @parents.delete_if {|i| i == value.husband}
+        end
+        if value.wife
+          @parents.delete_if {|i| i == value.wife}
         end
       else
         super
@@ -958,7 +946,9 @@ class GedcomIndi < GedcomEntry
   attr_gedcom :death, :deat
   attr_ldap :death, :deathdn
   attr_accessor :mother
+  attr_ldap :mother, :motherdn
   attr_accessor :father
+  attr_ldap :father, :fatherdn
   attr_reader :names
   attr_multi :names
   attr_gedcom :names, :name
@@ -1035,7 +1025,17 @@ class GedcomIndi < GedcomEntry
       elsif fieldname == :bapm
         options.delete fieldname
       elsif fieldname == :even
+        if value.dn
+          puts fieldname.inspect
+          puts value.inspect
+          puts self.dn.inspect
+          puts value.dn.inspect
+        end
         options.delete fieldname
+      elsif fieldname == :mother
+        value.addfields(even: self.birth)
+      elsif fieldname == :father
+        value.addfields(even: self.birth)
       end
     end
     newoptions.each do |fieldname, value|
@@ -1223,7 +1223,7 @@ class GedcomSour < GedcomEntry
   attr_ldap :rawdata, :rawdata
 
   def initialize(arg: nil, filename: nil, parent: nil, source: nil, **options)
-    @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
+#    @events = []
     @authors = []
     if filename
       super(filename: filename, title: filename, source: source, rawdata: (File.read filename), **options)
@@ -1290,34 +1290,6 @@ class GedcomSour < GedcomEntry
     end
   end
   
-  def addevent(event, date = event.date)
-    if date
-      @events[date.year][date.month][date.day][date.relative].push event
-    else
-      @events[999999][0][0][0].push event
-    end
-    if @husband
-      @husband.addevent event, date
-    end
-    if @wife
-      @wife.addevent event, date
-    end
-  end
-
-  def delevent(event, date = event.date)
-    if date
-      @events[date.year][date.month][date.day][date.relative].delete_if {|i| i == event}
-    else
-      @events[999999][0][0][0].delete_if {|i| i == event}
-    end
-    if @husband
-      @husband.delevent event, date
-    end
-    if @wife
-      @wife.delevent event, date
-    end
-  end
-
   def to_s
     title
   end
@@ -1379,10 +1351,11 @@ class GedcomFam < GedcomEntry
   attr_gedcom :husband, :husb
   attr_reader :wife
   attr_reader :events
+  attr_gedcom :events, :even
   attr_reader :children
   
   def initialize(**options)
-    @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
+    @events = []
     @children = []
     super
   end
@@ -1403,86 +1376,58 @@ class GedcomFam < GedcomEntry
 
   def addfields(**options)
     options.each do |fieldname, value|
+      puts "Adding #{fieldname} #{value.inspect} to #{self.inspect}"
       if fieldname == :husb
         @husband = value
         @children.each do |child|
-          child.father = @husband
+          child.addfields(father: @husband)
         end
-        @events.keys.each do |year|
-          @events[year].keys.each do |month|
-            @events[year][month].keys.each do |day|
-              @events[year][month][day].keys.each do |relative|
-                @events[year][month][day][relative].each do |event|
-                  @husband.addevent event
-                end
-              end
-            end
-          end
+        @events.each do |event|
+          @husband.addfields(even: event)
         end
         options.delete fieldname
       elsif fieldname == :wife
         @wife = value
         @children.each do |child|
-          child.mother = @wife
+          child.addfields(mother: @wife)
         end
-        @events.keys.each do |year|
-          @events[year].keys.each do |month|
-            @events[year][month].keys.each do |day|
-              @events[year][month][day].keys.each do |relative|
-                @events[year][month][day][relative].each do |event|
-                  @wife.addevent event
-                end
-              end
-            end
-          end
+        @events.each do |event|
+          @wife.addfields(even: event)
         end
         options.delete fieldname
       elsif fieldname == :chil
-        #puts "Adding #{fieldname} #{value.inspect} to #{self.inspect}"
-        @children.push child
+        @children.push value
         if @husband
-          value.father = @husband
-          if value.birth
-            @husband.addevent value.birth
-          end
+          value.addfields(father: @husband)
         end
         if @wife
-          value.mother = @wife
-          if value.birth
-            @wife.addevent value.birth
-          end
+          value.addfields(mother: @wife)
         end
         options.delete fieldname
+      elsif fieldname == :even
+        if @husband
+          @husband.addfields(even: event)
+        end
+        if @wife
+          @wife.addfields(even: event)
+        end
       end
     end
     super(**options)
   end
-  
-  def addevent(event, date = event.date)
-    if date
-      @events[date.year][date.month][date.day][date.relative].push event
-    else
-      @events[999999][0][0][0].push event
-    end
-    if @husband
-      @husband.addevent event, date
-    end
-    if @wife
-      @wife.addevent event, date
-    end
-  end
 
-  def delevent(event, date = event.date)
-    if date
-      @events[date.year][date.month][date.day][date.relative].delete_if {|i| i == event}
-    else
-      @events[999999][0][0][0].delete_if {|i| i == event}
-    end
-    if @husband
-      @husband.delevent event, date
-    end
-    if @wife
-      @wife.delevent event, date
+  def deletefields(**options)
+    options.each do |fieldname, value|
+      if fieldname == :even
+        if @husband
+          @husband.deletefields(even: event)
+        end
+        if @wife
+          @wife.deletefields(even: event)
+        end
+      else
+        super(**options)
+      end
     end
   end
 
