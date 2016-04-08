@@ -447,6 +447,7 @@ class GedcomHead < GedcomEntry
   attr_reader :file
   attr_reader :gedcom
   attr_reader :charset
+  attr_gedcom :charset, :char
 
   def initialize(source: nil, **options)
     if source
