@@ -748,13 +748,14 @@ class GedcomEven < GedcomEntry
   attr_gedcom :description, :type
   attr_ldap :description, :description
   attr_reader :sources
+  attr_gedcom :sources, :sour
   attr_ldap :sources, :sourcedns
 
   def initialize(source: nil, **options)
     super(**options)
     @sources = []
     if source
-      addsource source
+      addfields(:sour => source)
     end
   end
   
@@ -764,24 +765,6 @@ class GedcomEven < GedcomEntry
     else
       "#{@date} #{@place.inspect}"
     end
-  end
-
-  def addfields(**options)
-    options.each do |fieldname, value|
-      if fieldname == :sour
-        addsource value
-        options.delete fieldname
-      end
-    end
-    super(**options)
-  end
-
-  def addsource(source)
-    addfields(:sources => source)
-  end
-
-  def delsource(source)
-    deletefields(sources: source)
   end
 
   def rdn
@@ -919,10 +902,9 @@ class GedcomAdop < GedcomEven
         if value.wife
           @parents.delete_if {|i| i == value.wife}
         end
-      else
-        super
       end
     end
+    super(**options)
   end
 
   def to_s
@@ -1003,20 +985,6 @@ class GedcomIndi < GedcomEntry
     "#{@fullname} #{birthdate} - #{deathdate}"
   end
 
-  def addsource(source)
-    addfields(sources: source)
-    @user.findobjects('gedcomEvent', @dn) do |event|
-      event.addsource source
-    end
-  end
-
-  def delsource(source)
-    deletefields(sources: source)
-    @user.findobjects('gedcomEvent', @dn) do |event|
-      event.delsource source
-    end
-  end
-  
   def addfields(**options)
     newoptions = {}
     options.each do |fieldname, value|
@@ -1049,10 +1017,25 @@ class GedcomIndi < GedcomEntry
         value.addfields(even: self.birth)
       elsif fieldname == :father
         value.addfields(even: self.birth)
+      elsif fieldname == :sour
+        @user.findobjects('gedcomEvent', @dn) do |event|
+          event.addfields(sour: value)
+        end
       end
     end
     newoptions.each do |fieldname, value|
       options[fieldname] = value
+    end
+    super(**options)
+  end
+
+  def deletefields(**options)
+    options.each do |fieldname, value|
+      if fieldname == :sour
+        @user.findobjects('gedcomEvent', @dn) do |event|
+          event.delfields(sour: value)
+        end
+      end
     end
     super(**options)
   end
@@ -1426,10 +1409,9 @@ class GedcomFam < GedcomEntry
         if @wife
           @wife.deletefields(even: event)
         end
-      else
-        super(**options)
       end
     end
+    super(**options)
   end
 
   def showevents
