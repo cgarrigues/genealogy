@@ -1042,7 +1042,6 @@ class GedcomIndi < GedcomEntry
         options.delete fieldname
       elsif fieldname == :even
         unless self == value.parent
-          puts "Need to create an alias event under #{dn.inspect} pointing at #{value.dn.inspect}"
           makealias value.dn
         end
         options.delete fieldname
@@ -1379,7 +1378,6 @@ class GedcomFam < GedcomEntry
 
   def addfields(**options)
     options.each do |fieldname, value|
-      puts "Adding #{fieldname} #{value.inspect} to #{self.inspect}"
       if fieldname == :husb
         @husband = value
         @children.each do |child|
