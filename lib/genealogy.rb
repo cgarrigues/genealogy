@@ -1055,7 +1055,7 @@ end
 class GedcomOffi < GedcomEntry
   def initialize(arg: "", parent: nil, **options)
     (@first, @last, @suffix) = arg.split(/\s*\/[\s,]*/)
-    parent[fieldname] = $names[@last][@first][@suffix]
+#    parent.addfields(fieldname, $names[@last][@first][@suffix]])
   end
 end
 
