@@ -122,6 +122,7 @@ class User
       base: base,
       scope: Net::LDAP::SearchScope_SingleLevel,
       filter: Net::LDAP::Filter.eq("objectclass", ldapclass),
+      deref: Net::LDAP::DerefAliases_Search,
       return_result: false,
     ) do |entry|
         object = classfromentry(entry).new ldapentry: entry, user: self
