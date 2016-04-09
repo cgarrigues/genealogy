@@ -341,16 +341,16 @@ class GedcomEntry
     end
   end
 
-  def makealias(destdn, rdnvalue=nil)
+  def makealias(dest, rdnvalue=nil)
     if rdnvalue
-      rdnfield = self.rdn[0]
+      rdnfield = dest.rdn[0]
     else
-      (rdnfield, rdnvalue) = rdn
+      (rdnfield, rdnvalue) = dest.rdn
     end
     aliasdn = "#{rdnfield}=#{Net::LDAP::DN.escape(rdnvalue)},#{self.dn}"
     attrs = {
       objectclass: ["alias", "extensibleObject"],
-      aliasedobjectname: destdn,
+      aliasedobjectname: dest.dn,
     }
     attrs[rdnfield] = rdnvalue
     #puts "Adding alias to #{destdn} as #{aliasdn} with attributes: #{attrs.inspect}"
@@ -1009,8 +1009,8 @@ class GedcomIndi < GedcomEntry
       elsif fieldname == :bapm
         options.delete fieldname
       elsif fieldname == :even
-        unless self == value.parent
-          makealias value.dn
+        if value and not self == value.parent
+          makealias value
         end
         options.delete fieldname
       elsif fieldname == :mother
@@ -1151,7 +1151,7 @@ class GedcomName < GedcomEntry
         end
       end
       @dn = dn
-      makealias parent.dn, parent.label.to_s
+      makealias parent, parent.label.to_s
       @user.objectfromdn[dn] = self
     end
   end
