@@ -117,7 +117,6 @@ class User
     end
   end
   
-
   def findobjects(ldapclass, base)
     unless @ldap.search(
       base: base,
@@ -286,8 +285,6 @@ class GedcomEntry
       uid = @title
       @noldapobject = false
     else
-      puts "Don't have a UID yet for #{self.inspect}"
-      #puts parentdn.inspect
       @noldapobject = true
     end
     [:uniqueidentifier, uid]
@@ -340,6 +337,24 @@ class GedcomEntry
           end
         end
       end
+    end
+  end
+
+  def makealias(destdn, rdnvalue=nil)
+    if rdnvalue
+      rdnfield = self.rdn[0]
+    else
+      (rdnfield, rdnvalue) = rdn
+    end
+    aliasdn = "#{rdnfield}=#{Net::LDAP::DN.escape(rdnvalue)},#{self.dn}"
+    attrs = {
+      objectclass: ["alias", "extensibleObject"],
+      aliasedobjectname: destdn,
+    }
+    attrs[rdnfield] = rdnvalue
+    #puts "Adding alias to #{destdn} as #{aliasdn} with attributes: #{attrs.inspect}"
+    unless @user.ldap.add dn: aliasdn, attributes: attrs
+      raise "Couldn't add alias #{aliasdn} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
     end
   end
 
@@ -1025,11 +1040,9 @@ class GedcomIndi < GedcomEntry
       elsif fieldname == :bapm
         options.delete fieldname
       elsif fieldname == :even
-        if value.dn
-          puts fieldname.inspect
-          puts value.inspect
-          puts self.dn.inspect
-          puts value.dn.inspect
+        unless self == value.parent
+          puts "Need to create an alias event under #{dn.inspect} pointing at #{value.dn.inspect}"
+          makealias value.dn
         end
         options.delete fieldname
       elsif fieldname == :mother
@@ -1155,18 +1168,7 @@ class GedcomName < GedcomEntry
         end
       end
       @dn = dn
-
-      uid = parent.label.to_s
-      aliasdn = "uniqueidentifier=#{Net::LDAP::DN.escape(uid)},#{dn}"
-      attrs = {
-        uniqueidentifier: uid,
-        objectclass: ["alias", "extensibleObject"],
-        aliasedobjectname: parent.dn,
-      }
-      #puts "Adding alias to #{parent.dn} under #{dn} as #{aliasdn} with attributes: #{attrs.inspect}"
-      unless @user.ldap.add dn: aliasdn, attributes: attrs
-        raise "Couldn't add alias #{aliasdn} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
-      end
+      makealias parent.dn, parent.label.to_s
       @user.objectfromdn[dn] = self
     end
   end
