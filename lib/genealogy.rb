@@ -282,9 +282,6 @@ class GedcomEntry
     if @label
       uid = @label.to_s
       @noldapobject = false
-    elsif @title
-      uid = @title
-      @noldapobject = false
     else
       @noldapobject = true
     end
@@ -342,18 +339,20 @@ class GedcomEntry
   end
 
   def makealias(dest, rdnvalue=nil)
+    puts "Adding alias to #{dest.dn.inspect} under #{self.dn.inspect}"
     if rdnvalue
       rdnfield = dest.rdn[0]
     else
       (rdnfield, rdnvalue) = dest.rdn
     end
+    puts rdnfield.inspect
+    puts rdnvalue.inspect
     aliasdn = "#{rdnfield}=#{Net::LDAP::DN.escape(rdnvalue)},#{self.dn}"
     attrs = {
       objectclass: ["alias", "extensibleObject"],
       aliasedobjectname: dest.dn,
     }
     attrs[rdnfield] = rdnvalue
-    #puts "Adding alias to #{destdn} as #{aliasdn} with attributes: #{attrs.inspect}"
     unless @user.ldap.add dn: aliasdn, attributes: attrs
       raise "Couldn't add alias #{aliasdn} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
     end
@@ -1010,6 +1009,7 @@ class GedcomIndi < GedcomEntry
         options.delete fieldname
       elsif fieldname == :even
         if value and not self == value.parent
+          puts "Adding #{fieldname.inspect} #{value.dn.inspect} to #{self.inspect}"
           makealias value
         end
         options.delete fieldname
@@ -1055,6 +1055,7 @@ end
 class GedcomOffi < GedcomEntry
   def initialize(arg: "", parent: nil, **options)
     (@first, @last, @suffix) = arg.split(/\s*\/[\s,]*/)
+    puts "#{arg} officiated at #{parent.inspect}"
 #    parent.addfields(fieldname, $names[@last][@first][@suffix]])
   end
 end
@@ -1211,9 +1212,18 @@ class GedcomSour < GedcomEntry
 #    @events = []
     @authors = []
     if filename
-      super(filename: filename, title: filename, source: source, rawdata: (File.read filename), **options)
+      super(filename: filename, title: File.basename(filename), source: source, rawdata: (File.read filename), **options)
     else
       super(parent: source, source: source, title: arg, **options)
+    end
+  end
+
+  def rdn
+    if @title == ''
+      super
+    else
+      @noldapobject = false
+      [:title, @title]
     end
   end
   
@@ -1390,10 +1400,10 @@ class GedcomFam < GedcomEntry
         options.delete fieldname
       elsif fieldname == :even
         if @husband
-          @husband.addfields(even: event)
+          @husband.addfields(even: value)
         end
         if @wife
-          @wife.addfields(even: event)
+          @wife.addfields(even: value)
         end
       end
     end
