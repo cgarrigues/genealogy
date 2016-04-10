@@ -1115,6 +1115,21 @@ class GedcomName < GedcomEntry
               raise "Couldn't add first initial #{firstinitial} at #{dn} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
             end
           end
+
+          if @first =~ / /
+            realfirst = @first.split(/\s+/)[0]
+            dn = "givenName=#{Net::LDAP::DN.escape(realfirst)},#{dn}"
+            unless @user.ldap.search(
+              base: dn,
+              scope: Net::LDAP::SearchScope_BaseObject,
+              return_result: false,
+            )
+              attrs[:givenname] = realfirst
+              unless @user.ldap.add dn: dn, attributes: attrs
+                raise "Couldn't add first name #{realfirst} at #{dn} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
+              end
+            end
+          end
         end
 
         clean = Net::LDAP::DN.escape(@first)
