@@ -15,6 +15,7 @@ build-nocache:
 run:
 	-docker stop $(CONTAINERNAME)
 	-docker rm $(CONTAINERNAME)
+	-docker volume ls -q|xargs docker volume rm
 	docker run --name $(CONTAINERNAME)  -p 389:389 -p 636:636 --detach $(NAME):$(VERSION)
 
 dump:
