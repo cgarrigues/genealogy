@@ -117,19 +117,27 @@ class User
     end
   end
   
-  def findobjects(ldapclass, base)
-    unless @ldap.search(
-      base: base,
+  def findobjects(ldapclass, base, &block)
+    if block
+      unless @ldap.search(
+        base: base,
       scope: Net::LDAP::SearchScope_SingleLevel,
       filter: Net::LDAP::Filter.eq("objectclass", ldapclass),
       deref: Net::LDAP::DerefAliases_Search,
       return_result: false,
-    ) do |entry|
-        object = classfromentry(entry).new ldapentry: entry, user: self
-        @objectfromdn[object.dn] = object
-        yield object
+      ) do |entry|
+          object = classfromentry(entry).new ldapentry: entry, user: self
+          @objectfromdn[object.dn] = object
+          block.call object
+        end
+        raise "Couldn't search #{@dn} for events: #{@ldap.get_operation_result.message}"
       end
-      raise "Couldn't search #{@dn} for events: #{@ldap.get_operation_result.message}"
+    else
+      objects = []
+      findobjects(ldapclass, base) {|object|
+        objects.push object
+      }
+      objects
     end
   end
 
@@ -153,7 +161,9 @@ class User
         indi = classfromentry(entry).new ldapentry: entry, user: self
         @objectfromdn[indi.dn] = indi
         puts indi
-        findobjects('gedcomEvent', indi.dn) do |event|
+        events = findobjects('gedcomEvent', indi.dn).sort_by do |event|
+          [event.year||9999, event.month||0, event.day||0, event.relativetodate||0]
+        end.each do |event|
           puts "    #{event.date}\t#{event.description}"
         end
       end
@@ -738,9 +748,13 @@ class GedcomEven < GedcomEntry
   ldap_class :gedcomevent
   attr_reader :date
   attr_ldap :date, :gedcomdate
+  attr_reader :year
   attr_ldap :year, :year
+  attr_reader :month
   attr_ldap :month, :month
+  attr_reader :day
   attr_ldap :day, :day
+  attr_reader :relativetodate
   attr_ldap :relativetodate, :relativetodate
   attr_ldap :baddata, :baddata
   attr_gedcom :place, :plac
@@ -1411,14 +1425,14 @@ class GedcomFam < GedcomEntry
         @children.push value
         if @husband
           if value.father
-            puts "Not adding #{@husband.inspect} as #{@self.inspect}'s father because #{value.father.inspect} is already listed"
+            puts "Not adding #{@husband.inspect} as #{self.inspect}'s father because #{value.father.inspect} is already listed"
           else
             value.addfields(father: @husband)
           end
         end
         if @wife
           if value.mother
-            puts "Not adding #{@wife.inspect} as #{@self.inspect}'s mother because #{value.mother.inspect} is already listed"
+            puts "Not adding #{@wife.inspect} as #{self.inspect}'s mother because #{value.mother.inspect} is already listed"
           else
             value.addfields(mother: @wife)
           end
