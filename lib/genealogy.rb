@@ -143,11 +143,17 @@ class User
 
   def findname(first: nil, last: nil)
     if first
-      firstinit = first[0]
-      if firstinit == first
-        dn = "givenName=#{Net::LDAP::DN.escape(first)},sn=#{Net::LDAP::DN.escape(last)},#{@dn}"
+      if matchdata = /^(?<realfirst>\S+)\s/.match(first)
+        realfirst = matchdata[:realfirst]
+        firstinit = first[0]
+        dn = "givenName=#{Net::LDAP::DN.escape(first)},givenname=#{Net::LDAP::DN.escape(realfirst)},givenname=#{Net::LDAP::DN.escape(firstinit)},sn=#{Net::LDAP::DN.escape(last)},#{@dn}"
       else
-        dn = "givenName=#{Net::LDAP::DN.escape(first)},givenname=#{Net::LDAP::DN.escape(firstinit)},sn=#{Net::LDAP::DN.escape(last)},#{@dn}"
+        firstinit = first[0]
+        if firstinit == first
+          dn = "givenName=#{Net::LDAP::DN.escape(first)},sn=#{Net::LDAP::DN.escape(last)},#{@dn}"
+        else
+          dn = "givenName=#{Net::LDAP::DN.escape(first)},givenname=#{Net::LDAP::DN.escape(firstinit)},sn=#{Net::LDAP::DN.escape(last)},#{@dn}"
+        end
       end
     else
       dn = "sn=#{Net::LDAP::DN.escape(last)},#{@dn}"
@@ -234,6 +240,25 @@ class GedcomEntry
     @@ldapclasstoclass[ldapclass]
   end
 
+  def populatefromldap(ldapentry)
+    ldapentry.each do |fieldname, value|
+      syntax = @user.attributemetadata[fieldname][:syntax]
+      if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
+        value.map! {|dn| LdapAlias.new dn, @user}
+      elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
+        value.map! {|num| Integer(num)}
+      elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
+        value.map! {|val| (val == 'TRUE')}
+      end
+      fieldname = @@ldaptofield[self.class][fieldname] || @@ldaptofield[self.class.superclass][fieldname] || fieldname
+      if @@multivaluevariables[self.class].include?(fieldname) || @@multivaluevariables[self.class.superclass].include?(fieldname)
+        instance_variable_set "@#{fieldname}".to_sym, value
+      else
+        instance_variable_set "@#{fieldname}".to_sym, value[0]
+      end
+    end
+  end
+
   def initialize(ldapentry: nil, **options)
     options.each do |fieldname, value|
       if value
@@ -252,22 +277,7 @@ class GedcomEntry
       end
     end
     if ldapentry
-      ldapentry.each do |fieldname, value|
-        syntax = @user.attributemetadata[fieldname][:syntax]
-        if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
-          value.map! {|dn| LdapAlias.new dn, @user}
-        elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
-          value.map! {|num| Integer(num)}
-        elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
-          value.map! {|val| (val == 'TRUE')}
-        end
-        fieldname = @@ldaptofield[self.class][fieldname] || @@ldaptofield[self.class.superclass][fieldname] || fieldname
-        if @@multivaluevariables[self.class].include?(fieldname) || @@multivaluevariables[self.class.superclass].include?(fieldname)
-          instance_variable_set "@#{fieldname}".to_sym, value
-        else
-          instance_variable_set "@#{fieldname}".to_sym, value[0]
-        end
-      end
+      populatefromldap ldapentry
     else
       if @user
         if @@classtoldapclass[self.class] || @@classtoldapclass[self.class.superclass]
@@ -314,34 +324,72 @@ class GedcomEntry
         puts "#{rdnfield.inspect} in #{self.inspect} is an unresolved reference (#{rdnvalue.inspect})"
       else
         @dn = "#{rdnfield}=#{Net::LDAP::DN.escape(rdnvalue)},#{parentdn}"
-        unless @user.ldap.search(
-          base: @dn,
-          scope: Net::LDAP::SearchScope_BaseObject,
-          return_result: false,
-        )
-          @user.objectfromdn[@dn] = self
-          attrs = {}
-          attrs[:objectclass] = ["top", @@classtoldapclass[self.class].to_s]
-          attrs[rdnfield] = rdnvalue
-          if ldapsuperclass = @@classtoldapclass[self.class.superclass]
-            attrs[:objectclass].push ldapsuperclass.to_s
-          end
-          ldapfields.each do |fieldname|
-            ldapfieldname = @@fieldtoldap[self.class][fieldname] || @@fieldtoldap[self.class.superclass][fieldname] || fieldname
-            if value = instance_variable_get("@#{fieldname}".to_sym)
-              unless value == [] or value == ""
-                if value.kind_of? GedcomEntry
-                  if value.dn
-                    attrs[ldapfieldname] = value.dn
-                  end
-                else
-                  attrs[ldapfieldname] = value
+        @user.objectfromdn[@dn] = self
+        attrs = {}
+        attrs[:objectclass] = ["top", @@classtoldapclass[self.class].to_s]
+        attrs[rdnfield] = rdnvalue
+        if ldapsuperclass = @@classtoldapclass[self.class.superclass]
+          attrs[:objectclass].push ldapsuperclass.to_s
+        end
+        ldapfields.each do |fieldname|
+          ldapfieldname = @@fieldtoldap[self.class][fieldname] || @@fieldtoldap[self.class.superclass][fieldname] || fieldname
+          if value = instance_variable_get("@#{fieldname}".to_sym)
+            unless value == [] or value == ""
+              if value.kind_of? GedcomEntry
+                if value.dn
+                  attrs[ldapfieldname] = value.dn
                 end
+              else
+                attrs[ldapfieldname] = value
               end
             end
           end
-          unless @user.ldap.add dn: @dn, attributes: attrs
-            raise "Couldn't add #{self.inspect} at #{@dn} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
+        end
+        unless @user.ldap.add dn: @dn, attributes: attrs
+          message = @user.ldap.get_operation_result.message
+          if message =~ /Entry Already Exists/
+            unless @user.ldap.search(
+              base: @dn,
+              scope: Net::LDAP::SearchScope_BaseObject,
+              return_result: false,
+            ) do |entry|
+                populatefromldap entry
+                entry.each do |fieldname, value|
+                  value.map! do |s|
+                    if s.is_a? String
+                      s.downcase
+                    end
+                  end
+                  attrs.delete_if do |key, attrvalue|
+                    if key == fieldname
+                      if attrvalue.is_a? Array
+                        value == attrvalue.map do |s|
+                          if s.is_a? String
+                            s.downcase
+                          else
+                            s
+                          end
+                        end
+                      else
+                        if attrvalue.is_a? String
+                          value == [ attrvalue.downcase ]
+                        else
+                          value == [ attrvalue ]
+                        end
+                      end
+                    else
+                      false
+                    end
+                  end
+                end
+                unless attrs == {}
+                  puts "#{self.inspect} already exists at #{dn.inspect}; trying to add #{attrs.inspect}"
+                end
+              end
+              raise "Couldn't find #{self.inspect} at #{dn} even though we supposedly exist there: #{@user.ldap.get_operation_result.message}"
+            end
+          else
+            raise "Couldn't add #{self.inspect} at #{@dn} with attributes #{attrs.inspect}: #{message}"
           end
         end
       end
@@ -434,26 +482,17 @@ class GedcomEntry
       end
       if @user and @dn
         if fieldname = (@@fieldtoldap[self.class][fieldname] || @@fieldtoldap[self.class.superclass][fieldname])
-          if @noldapobject
-            (rdnfield, rdnvalue) = self.rdn
-            if rdnfield == fieldname
-              # We weren't in LDAP, but now we can be added
-              puts "delayed addition of #{@dn} to ldap"
-              self.addtoldap
+          syntax = @user.attributemetadata[fieldname][:syntax]
+          if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
+            if value.dn
+              ops.push [:delete, fieldname, value.dn]
             end
+          elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
+            ops.push [:delete, fieldname, value.to_s]
+          elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
+            ops.push [:delete, fieldname, value.to_s.upcase]
           else
-            syntax = @user.attributemetadata[fieldname][:syntax]
-            if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
-              if value.dn
-                ops.push [:delete, fieldname, value.dn]
-              end
-            elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
-              ops.push [:delete, fieldname, value.to_s]
-            elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
-              ops.push [:delete, fieldname, value.to_s.upcase]
-            else
-              ops.push [:delete, fieldname, value]
-            end
+            ops.push [:delete, fieldname, value]
           end
         end
       end
@@ -477,26 +516,17 @@ class GedcomEntry
         end
         if @user and @dn
           if fieldname = (@@fieldtoldap[self.class][fieldname] || @@fieldtoldap[self.class.superclass][fieldname])
-            if @noldapobject
-              (rdnfield, rdnvalue) = self.rdn
-              if rdnfield == fieldname
-                # We weren't in LDAP, but now we can be added
-                puts "delayed addition of #{@dn} to ldap"
-                self.addtoldap
+            syntax = @user.attributemetadata[fieldname][:syntax]
+            if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
+              if newvalue.dn
+                ops.push [:replace, fieldname, [oldvalue.dn, newvalue.dn]]
               end
+            elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
+              ops.push [:delete, fieldname, [oldvalue.to_s, newvalue.to_s]]
+            elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
+              ops.push [:delete, fieldname, [oldvalue.to_s.upcase, newvalue.to_s.upcase]]
             else
-              syntax = @user.attributemetadata[fieldname][:syntax]
-              if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
-                if newvalue.dn
-                  ops.push [:replace, fieldname, [oldvalue.dn, newvalue.dn]]
-                end
-              elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
-                ops.push [:delete, fieldname, [oldvalue.to_s, newvalue.to_s]]
-              elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
-                ops.push [:delete, fieldname, [oldvalue.to_s.upcase, newvalue.to_s.upcase]]
-              else
-                ops.push [:delete, fieldname, [oldvalue, newvalue]]
-              end
+              ops.push [:delete, fieldname, [oldvalue, newvalue]]
             end
           end
         end
@@ -1133,8 +1163,8 @@ class GedcomName < GedcomEntry
             end
           end
 
-          if @first =~ / /
-            realfirst = @first.split(/\s+/)[0]
+          if matchdata = /^(?<realfirst>\S+)\s/.match(@first)
+            realfirst = matchdata[:realfirst]
             dn = "givenName=#{Net::LDAP::DN.escape(realfirst)},#{dn}"
             unless @user.ldap.search(
               base: dn,
@@ -1425,7 +1455,7 @@ class GedcomFam < GedcomEntry
         @children.push value
         if @husband
           if value.father
-            puts "Not adding #{@husband.inspect} as #{self.inspect}'s father because #{value.father.inspect} is already listed"
+            puts "Not adding #{@husband.inspect} as #{value.inspect}'s father because #{value.father.inspect} is already listed"
           else
             value.addfields(father: @husband)
           end
