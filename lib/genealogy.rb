@@ -339,22 +339,23 @@ class GedcomEntry
   end
 
   def makealias(dest, rdnvalue=nil)
-    #puts "Adding alias to #{dest.dn.inspect} under #{self.dn.inspect}"
-    if rdnvalue
-      rdnfield = dest.rdn[0]
+    if dest.dn
+      if rdnvalue
+        rdnfield = dest.rdn[0]
+      else
+        (rdnfield, rdnvalue) = dest.rdn
+      end
+      aliasdn = "#{rdnfield}=#{Net::LDAP::DN.escape(rdnvalue)},#{self.dn}"
+      attrs = {
+        objectclass: ["alias", "extensibleObject"],
+        aliasedobjectname: dest.dn,
+      }
+      attrs[rdnfield] = rdnvalue
+      unless @user.ldap.add dn: aliasdn, attributes: attrs
+        raise "Couldn't add alias #{aliasdn.inspect} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
+      end
     else
-      (rdnfield, rdnvalue) = dest.rdn
-    end
-    #puts rdnfield.inspect
-    #puts rdnvalue.inspect
-    aliasdn = "#{rdnfield}=#{Net::LDAP::DN.escape(rdnvalue)},#{self.dn}"
-    attrs = {
-      objectclass: ["alias", "extensibleObject"],
-      aliasedobjectname: dest.dn,
-    }
-    attrs[rdnfield] = rdnvalue
-    unless @user.ldap.add dn: aliasdn, attributes: attrs
-      raise "Couldn't add alias #{aliasdn} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
+      puts "Can't add alias under #{self.inspect} to #{dest.inspect} because it has no DN"
     end
   end
 
@@ -936,7 +937,6 @@ end
 class GedcomIndi < GedcomEntry
   ldap_class :gedcomindividual
   attr_ldap :gender, :sex
-  attr_reader :birth
   attr_gedcom :birth, :birt
   attr_ldap :birth, :birthdn
   attr_reader :baptism
@@ -968,22 +968,22 @@ class GedcomIndi < GedcomEntry
 
   def to_s
     if @birth and @birth.respond_to? :date
-      birthdate = @birth.date
+      birthdate = (@birth.date || '?')
     else
       birthdate = '?'
     end
-    if @death
-      if @death.respond_to? :date
-        deathdate = @death.date
-      else
-        deathdate = '?'
-      end
+    if @death and @death.respond_to? :date
+        deathdate = (@death.date || '?')
     else
       deathdate = ''
     end
     "#{@fullname} #{birthdate} - #{deathdate}"
   end
 
+  def birth
+    @birth or GedcomBirt.new parent: self, fieldname: :birt, user: @user
+  end
+  
   def addfields(**options)
     newoptions = {}
     options.each do |fieldname, value|
@@ -1017,17 +1017,9 @@ class GedcomIndi < GedcomEntry
         end
         options.delete fieldname
       elsif fieldname == :mother
-        if self.birth
-          value.addfields(even: self.birth)
-        else
-          puts "#{self.inspect} doesn't have a birth record"
-        end
+        value.addfields(even: self.birth)
       elsif fieldname == :father
-        if self.birth
-          value.addfields(even: self.birth)
-        else
-          puts "#{self.inspect} doesn't have a birth record"
-        end
+        value.addfields(even: self.birth)
       elsif fieldname == :sour
         @user.findobjects('gedcomEvent', @dn) do |event|
           event.addfields(sour: value)
@@ -1418,10 +1410,18 @@ class GedcomFam < GedcomEntry
       elsif fieldname == :chil
         @children.push value
         if @husband
-          value.addfields(father: @husband)
+          if value.father
+            puts "Not adding #{@husband.inspect} as #{@self.inspect}'s father because #{value.father.inspect} is already listed"
+          else
+            value.addfields(father: @husband)
+          end
         end
         if @wife
-          value.addfields(mother: @wife)
+          if value.mother
+            puts "Not adding #{@wife.inspect} as #{@self.inspect}'s mother because #{value.mother.inspect} is already listed"
+          else
+            value.addfields(mother: @wife)
+          end
         end
         options.delete fieldname
       elsif fieldname == :even
