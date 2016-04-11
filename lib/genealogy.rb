@@ -339,14 +339,14 @@ class GedcomEntry
   end
 
   def makealias(dest, rdnvalue=nil)
-    puts "Adding alias to #{dest.dn.inspect} under #{self.dn.inspect}"
+    #puts "Adding alias to #{dest.dn.inspect} under #{self.dn.inspect}"
     if rdnvalue
       rdnfield = dest.rdn[0]
     else
       (rdnfield, rdnvalue) = dest.rdn
     end
-    puts rdnfield.inspect
-    puts rdnvalue.inspect
+    #puts rdnfield.inspect
+    #puts rdnvalue.inspect
     aliasdn = "#{rdnfield}=#{Net::LDAP::DN.escape(rdnvalue)},#{self.dn}"
     attrs = {
       objectclass: ["alias", "extensibleObject"],
@@ -935,7 +935,7 @@ end
 
 class GedcomIndi < GedcomEntry
   ldap_class :gedcomindividual
-  attr_reader :gender, :sex
+  attr_ldap :gender, :sex
   attr_reader :birth
   attr_gedcom :birth, :birt
   attr_ldap :birth, :birthdn
@@ -1009,14 +1009,25 @@ class GedcomIndi < GedcomEntry
         options.delete fieldname
       elsif fieldname == :even
         if value and not self == value.parent
-          puts "Adding #{fieldname.inspect} #{value.dn.inspect} to #{self.inspect}"
-          makealias value
+          if value.dn
+            makealias value
+          else
+            puts "#{fieldname.inspect} #{value.inspect} (being added to #{self.inspect}) doesn't have a dn"
+          end
         end
         options.delete fieldname
       elsif fieldname == :mother
-        value.addfields(even: self.birth)
+        if self.birth
+          value.addfields(even: self.birth)
+        else
+          puts "#{self.inspect} doesn't have a birth record"
+        end
       elsif fieldname == :father
-        value.addfields(even: self.birth)
+        if self.birth
+          value.addfields(even: self.birth)
+        else
+          puts "#{self.inspect} doesn't have a birth record"
+        end
       elsif fieldname == :sour
         @user.findobjects('gedcomEvent', @dn) do |event|
           event.addfields(sour: value)
