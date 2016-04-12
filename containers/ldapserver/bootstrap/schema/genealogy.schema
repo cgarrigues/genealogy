@@ -198,6 +198,21 @@ attributetype ( 1.3.6.1.4.1.19106.1.1.25
         SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
         )
 
+attributetype ( 1.3.6.1.4.1.19106.1.1.26
+	NAME 'couple'
+	DESC 'DNs married couple'
+        EQUALITY distinguishedNameMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
+        )
+	
+attributetype ( 1.3.6.1.4.1.19106.1.1.27
+	NAME 'officiator'
+	DESC 'officiator at wedding'
+        EQUALITY caseIgnoreIA5Match
+        SUBSTR caseIgnoreIA5SubstringsMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+        )
+
 objectclass ( 1.3.6.1.4.1.19106.1.2.1
 	NAME 'gedcomSource'
 	DESC 'a gedcom source file'
@@ -272,5 +287,20 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.10
 	DESC 'a page of a source document'
 	STRUCTURAL
 	MUST (description )
+	)
+
+objectclass ( 1.3.6.1.4.1.19106.1.2.11
+	NAME 'gedcomMarriage'
+	DESC 'a gedcom marriage'
+	AUXILIARY
+	MUST (couple)
+	MAY (officiator)
+	)
+
+objectclass ( 1.3.6.1.4.1.19106.1.2.12
+	NAME 'gedcomDivorce'
+	DESC 'a gedcom divorce'
+	AUXILIARY
+	MUST (couple)
 	)
 

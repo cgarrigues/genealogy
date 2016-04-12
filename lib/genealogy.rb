@@ -278,11 +278,9 @@ class GedcomEntry
     end
     if ldapentry
       populatefromldap ldapentry
-    else
-      if @user
-        if @@classtoldapclass[self.class] || @@classtoldapclass[self.class.superclass]
-          addtoldap
-        end
+    elsif @user
+      if @@classtoldapclass[self.class] || @@classtoldapclass[self.class.superclass]
+        addtoldap
       end
     end
     if @parent
@@ -308,15 +306,17 @@ class GedcomEntry
     [:uniqueidentifier, uid]
   end
   
-  def addtoldap
+  def parentdn
     if @parent
-      parentdn = @parent.dn
+      @parent.dn
     elsif @source
-      parentdn = @source.dn
+      @source.dn
     else
-      parentdn = @user.dn
+      @user.dn
     end
-    
+  end
+  
+  def addtoldap
     (rdnfield, rdnvalue) = self.rdn
     rdnfield = @@fieldtoldap[self.class][rdnfield] || @@fieldtoldap[self.class.superclass][rdnfield] || rdnfield
     unless @noldapobject
@@ -334,18 +334,30 @@ class GedcomEntry
         ldapfields.each do |fieldname|
           ldapfieldname = @@fieldtoldap[self.class][fieldname] || @@fieldtoldap[self.class.superclass][fieldname] || fieldname
           if value = instance_variable_get("@#{fieldname}".to_sym)
-            unless value == [] or value == ""
-              if value.kind_of? GedcomEntry
-                if value.dn
-                  attrs[ldapfieldname] = value.dn
+            if value.is_a? Array
+              unless value == []
+                attrs[ldapfieldname] = value.map {|v| v.kind_of?(GedcomEntry) ? v.dn : v}
+              end
+            else
+              unless value == ""
+                if value.kind_of? GedcomEntry
+                  if value.dn
+                    attrs[ldapfieldname] = value.dn
+                  end
+                else
+                  attrs[ldapfieldname] = value
                 end
-              else
-                attrs[ldapfieldname] = value
               end
             end
           end
         end
-        unless @user.ldap.add dn: @dn, attributes: attrs
+        begin
+          added = @user.ldap.add dn: @dn, attributes: attrs
+        rescue Exception => e
+          puts "Failed to add #{@dn.inspect} with attributes #{attrs.inspect}: #{e}"
+          added = false
+        end
+        unless added
           message = @user.ldap.get_operation_result.message
           if message =~ /Entry Already Exists/
             unless @user.ldap.search(
@@ -389,7 +401,7 @@ class GedcomEntry
               raise "Couldn't find #{self.inspect} at #{dn} even though we supposedly exist there: #{@user.ldap.get_operation_result.message}"
             end
           else
-            raise "Couldn't add #{self.inspect} at #{@dn} with attributes #{attrs.inspect}: #{message}"
+            raise "Couldn't add #{self.inspect} at #{@dn.inspect} with attributes #{attrs.inspect}: #{message}"
           end
         end
       end
@@ -410,7 +422,12 @@ class GedcomEntry
       }
       attrs[rdnfield] = rdnvalue
       unless @user.ldap.add dn: aliasdn, attributes: attrs
-        raise "Couldn't add alias #{aliasdn.inspect} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
+        message = @user.ldap.get_operation_result.message
+        if message =~ /Entry Already Exists/
+          puts "Couldn't add alias #{aliasdn.inspect} with attributes #{attrs.inspect}: #{message}"
+        else
+          raise "Couldn't add alias #{aliasdn.inspect} with attributes #{attrs.inspect}: #{message}"
+        end
       end
     else
       puts "Can't add alias under #{self.inspect} to #{dest.inspect} because it has no DN"
@@ -813,7 +830,7 @@ class GedcomEven < GedcomEntry
 
   def rdn
     @noldapobject = not(@description)
-    [:description, description]
+    [:description, @description]
   end
 end
 
@@ -891,16 +908,60 @@ class GedcomBuri < GedcomEven
 end
 
 class GedcomMarr < GedcomEven
+  ldap_class :gedcommarriage
+  attr_ldap :couple, :couple
   attr_gedcom :officiator, :offi
+  attr_ldap :officiator, :officiator
 
-  def to_s
-    "#{date} #{@parent.inspect}"
+  def initialize(parent: nil, ldapentry: nil, **options)
+    @parents = []
+    if ldapentry
+      super(ldapentry: ldapentry, **options)
+    else
+      couple = []
+      if parent.husband
+        couple.push parent.husband
+      end
+      if parent.wife
+        couple.push parent.wife
+      end
+      super(couple: couple, description: "Marriage of #{couple.map {|i| i.fullname}.join(' and ')}", **options)
+      couple[1..999].each do |i|
+        i.makealias self
+      end
+    end
+  end
+
+  def parentdn
+    @couple[0].dn
   end
 end
 
 class GedcomDiv < GedcomEven
-  def to_s
-    "#{date} #{@parent.inspect}"
+  ldap_class :gedcomdivorce
+  attr_ldap :couple, :couple
+
+  def initialize(parent: nil, ldapentry: nil, **options)
+    @parents = []
+    if ldapentry
+      super(ldapentry: ldapentry, **options)
+    else
+      couple = []
+      if parent.husband
+        couple.push parent.husband
+      end
+      if parent.wife
+        couple.push parent.wife
+      end
+      super(couple: couple, description: "Divorce of #{couple.map {|i| i.fullname}.join(' and ')}", **options)
+      couple[1..999].each do |i|
+        i.makealias self
+      end
+    end
+  end
+
+  def parentdn
+    @couple[0].dn
   end
 end
 
@@ -1021,7 +1082,7 @@ class GedcomIndi < GedcomEntry
     else
       deathdate = ''
     end
-    "#{@fullname} #{birthdate} - #{deathdate}"
+    "#{@fullname} #{birthdate} - #{deathdate}".rstrip
   end
 
   def birth
@@ -1221,7 +1282,7 @@ class GedcomName < GedcomEntry
 
   def to_s
     if @suffix
-      "#{@first} /#{@last}/#{@suffix}"
+      "#{@first} /#{@last}/ #{@suffix}"
     else
       "#{@first} /#{@last}/"
     end
@@ -1405,11 +1466,13 @@ class GedcomPage < GedcomEntry
 end
 
 class GedcomFam < GedcomEntry
+  attr_reader :husband
   attr_gedcom :husband, :husb
   attr_reader :wife
   attr_reader :events
   attr_gedcom :events, :even
   attr_reader :children
+  attr_gedcom :children, :chil
   
   def initialize(**options)
     @events = []
