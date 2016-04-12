@@ -1189,7 +1189,7 @@ class GedcomName < GedcomEntry
   end
   
   def addtoldap
-    dn=@user.dn
+    dn=parentdn
     if @last
       clean = Net::LDAP::DN.escape(@last)
       if clean == ''
