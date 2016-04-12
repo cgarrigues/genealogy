@@ -761,7 +761,7 @@ class GedcomPlac < GedcomEntry
   #
   # Note 4: So....if we have a parent argument, we attach 'place' to that argument as a child.
   #
-  # Note 5: Conversely, if we have a child argument, we attach 'place' to that argument as it's parent.
+  # Note 5: Conversely, if we have a child argument, we attach 'place' to that argument as its parent.
   #
   # Clear as mud?
   def initialize(fieldname: nil, label: nil, arg: "", parent: nil, child: nil, source: nil, **options)
@@ -1217,6 +1217,7 @@ class GedcomName < GedcomEntry
   def addtoldap
     dn=parentdn
     if @last
+      @last = @last.gsub /\*$/, ''
       clean = Net::LDAP::DN.escape(@last)
       if clean == ''
         clean = 'unknown'
