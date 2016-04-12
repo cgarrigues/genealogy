@@ -1173,7 +1173,7 @@ class GedcomName < GedcomEntry
   attr_reader :suffix
   attr_accessor :dn
   
-  def initialize(arg: "", fieldname: fieldname, parent: nil, **options)
+  def initialize(arg: "", fieldname: fieldname, **options)
     (first, last, suffix) = arg.split(/\s*\/[\s*,]*/)
     if first == ''
       first = nil
@@ -1181,7 +1181,7 @@ class GedcomName < GedcomEntry
     if suffix == ''
       suffix = nil
     end
-    super(fieldname: fieldname, parent: parent, first: first, last: last, suffix: suffix, **options)
+    super(fieldname: fieldname, first: first, last: last, suffix: suffix, **options)
   end
   
   def parentdn
