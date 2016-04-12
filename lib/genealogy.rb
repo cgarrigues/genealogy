@@ -309,8 +309,6 @@ class GedcomEntry
   def parentdn
     if @parent
       @parent.dn
-    elsif @source
-      @source.dn
     else
       @user.dn
     end
@@ -1186,6 +1184,10 @@ class GedcomName < GedcomEntry
     super(fieldname: fieldname, parent: parent, first: first, last: last, suffix: suffix, **options)
   end
   
+  def parentdn
+    @user.dn
+  end
+  
   def addtoldap
     dn=@user.dn
     if @last
@@ -1331,16 +1333,23 @@ class GedcomSour < GedcomEntry
   attr_reader :references
   attr_ldap :rawdata, :rawdata
 
-  def initialize(arg: nil, filename: nil, parent: nil, source: nil, **options)
-#    @events = []
+    def initialize(arg: nil, filename: nil, **options)
     @authors = []
     if filename
-      super(filename: filename, title: File.basename(filename), source: source, rawdata: (File.read filename), **options)
+      super(filename: filename, title: File.basename(filename), rawdata: (File.read filename), **options)
     else
-      super(parent: source, source: source, title: arg, **options)
+      super(title: arg, **options)
     end
   end
 
+  def parentdn
+    if @source
+      @source.dn
+    else
+      @user.dn
+    end
+  end
+  
   def rdn
     if @title == ''
       super
