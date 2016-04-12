@@ -73,11 +73,26 @@ class User
     else
       raise "Couldn't read root subschema record: #{@ldap.get_operation_result.message}"
     end
-
-
     @objectfromdn = Hash.new { |hash, key| hash[key] = getobjectfromdn key}
+    makeou "Names"
+    makeou "Individuals"
+    makeou "Sources"
   end
 
+  def makeou(ou)
+    oudn = "ou=#{Net::LDAP::DN.escape(ou)},#{self.dn}"
+      attrs = {
+        objectclass: ["top", "organizationalUnit"],
+        ou: ou,
+      }
+      unless ldap.add dn: oudn, attributes: attrs
+        message = ldap.get_operation_result.message
+        unless message =~ /Entry Already Exists/
+          raise "Couldn't add ou #{oudn.inspect} with attributes #{attrs.inspect}: #{message}"
+        end
+      end
+  end
+  
   def classfromentry(entry)
     objectclasses = entry.objectclass.map {|klass| klass.downcase.to_sym}
     ldapclass = objectclasses.detect do |ldapclass|
@@ -146,13 +161,13 @@ class User
       if matchdata = /^(?<realfirst>\S+)\s/.match(first)
         realfirst = matchdata[:realfirst]
         firstinit = first[0]
-        dn = "givenName=#{Net::LDAP::DN.escape(first)},givenname=#{Net::LDAP::DN.escape(realfirst)},givenname=#{Net::LDAP::DN.escape(firstinit)},sn=#{Net::LDAP::DN.escape(last)},#{@dn}"
+        dn = "givenName=#{Net::LDAP::DN.escape(first)},givenname=#{Net::LDAP::DN.escape(realfirst)},givenname=#{Net::LDAP::DN.escape(firstinit)},sn=#{Net::LDAP::DN.escape(last)},ou=Names,#{@dn}"
       else
         firstinit = first[0]
         if firstinit == first
-          dn = "givenName=#{Net::LDAP::DN.escape(first)},sn=#{Net::LDAP::DN.escape(last)},#{@dn}"
+          dn = "givenName=#{Net::LDAP::DN.escape(first)},sn=#{Net::LDAP::DN.escape(last)},ou=Names,#{@dn}"
         else
-          dn = "givenName=#{Net::LDAP::DN.escape(first)},givenname=#{Net::LDAP::DN.escape(firstinit)},sn=#{Net::LDAP::DN.escape(last)},#{@dn}"
+          dn = "givenName=#{Net::LDAP::DN.escape(first)},givenname=#{Net::LDAP::DN.escape(firstinit)},sn=#{Net::LDAP::DN.escape(last)},ou=Names,#{@dn}"
         end
       end
     else
@@ -1069,6 +1084,10 @@ class GedcomIndi < GedcomEntry
     super
   end
 
+  def parentdn
+    "ou=Individuals,#{@user.dn}"
+  end
+  
   def to_s
     if @birth and @birth.respond_to? :date
       birthdate = (@birth.date || '?')
@@ -1185,7 +1204,7 @@ class GedcomName < GedcomEntry
   end
   
   def parentdn
-    @user.dn
+    "ou=Names,#{@user.dn}"
   end
   
   def addtoldap
@@ -1346,7 +1365,7 @@ class GedcomSour < GedcomEntry
     if @source
       @source.dn
     else
-      @user.dn
+      "ou=Sources,#{@user.dn}"
     end
   end
   
