@@ -75,7 +75,6 @@ class User
     end
     @objectfromdn = Hash.new { |hash, key| hash[key] = getobjectfromdn key}
     makeou "Names"
-    makeou "Individuals"
     makeou "Sources"
   end
 
@@ -301,6 +300,20 @@ class GedcomEntry
     if @parent
       @parent.addfields(fieldname => self)
     end
+  end
+
+  def makeou(ou)
+    oudn = "ou=#{Net::LDAP::DN.escape(ou)},#{self.dn}"
+      attrs = {
+        objectclass: ["top", "organizationalUnit"],
+        ou: ou,
+      }
+      unless @user.ldap.add dn: oudn, attributes: attrs
+        message = @user.ldap.get_operation_result.message
+        unless message =~ /Entry Already Exists/
+          raise "Couldn't add ou #{oudn.inspect} with attributes #{attrs.inspect}: #{message}"
+        end
+      end
   end
 
   def to_s
@@ -1078,14 +1091,8 @@ class GedcomIndi < GedcomEntry
   attr_ldap :last, :sn
   attr_ldap :suffix, :initials
 
-  def initialize(source: nil, **options)
-    #puts "#{self.class} #{arg.inspect}"
-    @names = []
-    super
-  end
-
   def parentdn
-    "ou=Individuals,#{@user.dn}"
+    "ou=Individuals,#{@source.dn}"
   end
   
   def to_s
@@ -1356,17 +1363,15 @@ class GedcomSour < GedcomEntry
     @authors = []
     if filename
       super(filename: filename, title: File.basename(filename), rawdata: (File.read filename), **options)
+      makeou "Individuals"
+      makeou "Sources"
     else
       super(title: arg, **options)
     end
   end
 
   def parentdn
-    if @source
-      @source.dn
-    else
-      "ou=Sources,#{@user.dn}"
-    end
+    "ou=Sources,#{(@source || @user).dn}"
   end
   
   def rdn
