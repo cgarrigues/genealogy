@@ -75,6 +75,7 @@ class User
     end
     @objectfromdn = Hash.new { |hash, key| hash[key] = getobjectfromdn key}
     makeou "Names"
+    makeou "Places"
     makeou "Sources"
   end
 
@@ -730,75 +731,52 @@ class GedcomDate < GedcomEntry
 end
 
 class GedcomPlac < GedcomEntry
+  ldap_class :locality
   attr_reader :name
-  attr_reader :rawname
+  attr_ldap :name, :description
   attr_reader :places
   attr_reader :events
 
-  # This code is less that completely obvious.
-  #
-  # Note 1: If this is called by the internal recursion, it has a child: argument, but if it's called by the gedcom parsing code,
-  # it has a parent: argument.
-  #
-  # Note 2: This is because internal recursion is creating a tree in the opposite direction from the gedcom parsing code.
-  #
-  # Note 3: We do not care what GedcomPlac.new actually returns. The reason for this is that the place may already exist and we
-  # want to return the pre-existing place, not generate a new one. So we put either outselves or the pre-existing place in the 'place' variable.
-  #
-  # Note 4: So....if we have a parent argument, we attach 'place' to that argument as a child.
-  #
-  # Note 5: Conversely, if we have a child argument, we attach 'place' to that argument as its parent.
-  #
-  # Clear as mud?
-  def initialize(fieldname: nil, label: nil, arg: "", parent: nil, child: nil, source: nil, **options)
-    #puts "#{self.class} #{arg.inspect} #{child.inspect}"
-    @places = {}
-    @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
-    (@rawname, parentname) = arg.split(/\s*,\s*/,2)
-    @name = @rawname.upcase.gsub(/[^A-Z0-9]+/, '').to_sym
-    if parentname
-      GedcomPlac.new arg: parentname, child: self, source: source
-      # We may have already existed, so reach down our own throat. This may just return ourself.
-      place = self.parent.places[@name]
-    else
-      # Root of the place tree.
-      unless $places[@name]
-        $places[@name] = self
-      end
-      place = $places[@name]
-    end
-    if child
-      unless place and place.places[child.name]
-        place.addplace child
-      end
-      child.parent = place
-    end
-    if label
-      place.label = label
-    end
-    if parent
-      place.addfields(even: parent)
-      parent.addfields(fieldname => place)
-    end
-  end
-  
-  def addplace(place)
-    @places[place.name] = place
-  end
-  
-  def delevent(event, date)
-    if date
-      @events[@year][@month][@day][@relativetodate].delete_if {|i| i == event}
-    else
-      @events[999999][0][0][0].delete_if {|i| i == event}
-    end
+  def initialize(parent: nil, arg: "", user: nil, **options)
+    @user = user
+    args = arg.split /\s*,\s*/
+    @description = args[0]
+    @dn = Net::LDAP::DN.new *(args.map {|i| ["description", i]}.flatten), basedn
+    addtoldap @dn
+    makealias parent
   end
 
+  def addtoldap(dn)
+    unless @user.ldap.search(
+      base: dn,
+      scope: Net::LDAP::SearchScope_BaseObject,
+      return_result: false,
+    )
+      addtoldap Net::LDAP::DN.new *dn.to_a[2..999]
+      attrs = {
+        description: @description,
+        objectclass: ["top", "locality"],
+      }
+      unless @user.ldap.add dn: dn, attributes: attrs
+        raise "Couldn't add #{@description} at #{dn} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
+      end
+    end
+  end
+  
+  def basedn
+    Net::LDAP::DN.new "ou", "Places", @user.dn
+  end
+  
+  def rdn
+    @noldapobject = not(@description)
+    [:description, @description]
+  end
+  
   def to_s
     if parent
-      "#{@rawname}, #{parent}"
+      "#{@name}, #{parent}"
     else
-      "#{@rawname}"
+      "#{@name}"
     end
   end
 end
