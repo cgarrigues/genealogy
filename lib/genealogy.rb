@@ -122,7 +122,12 @@ class User
   end
   
   def modifyattributes(dn, ops)
-    unless @ldap.modify dn: dn, operations: ops
+    begin
+      modified = @ldap.modify dn: dn, operations: ops
+    rescue Exception => e
+      raise "Failed to modify #{@dn.inspect} with operations #{ops.inspect}: #{e}"
+    end
+    unless modified
       message = @ldap.get_operation_result.message
       if message =~ /Attribute or Value Exists/
         #puts "Couldn't modify attributes #{ops} for #{dn}: #{message}"
@@ -437,7 +442,7 @@ class GedcomEntry
       unless @user.ldap.add dn: aliasdn, attributes: attrs
         message = @user.ldap.get_operation_result.message
         if message =~ /Entry Already Exists/
-          puts "Couldn't add alias #{aliasdn.inspect} with attributes #{attrs.inspect}: #{message}"
+          #puts "Couldn't add alias #{aliasdn.inspect} with attributes #{attrs.inspect}: #{message}"
         else
           raise "Couldn't add alias #{aliasdn.inspect} with attributes #{attrs.inspect}: #{message}"
         end
@@ -740,13 +745,13 @@ class GedcomPlac < GedcomEntry
   def initialize(parent: nil, arg: "", user: nil, **options)
     @user = user
     args = arg.split /\s*,\s*/
-    @description = args[0]
-    @dn = Net::LDAP::DN.new *(args.map {|i| ["description", i]}.flatten), basedn
-    addtoldap @dn
-    makealias parent
+    dn = Net::LDAP::DN.new *(args.map {|i| ["description", i]}.flatten), basedn
+    name = args[0]
+    super(name: name, dn: dn, parent: parent, **options)
+    makealias parent, name
   end
 
-  def addtoldap(dn)
+  def addtoldap(dn=@dn)
     unless @user.ldap.search(
       base: dn,
       scope: Net::LDAP::SearchScope_BaseObject,
@@ -754,11 +759,11 @@ class GedcomPlac < GedcomEntry
     )
       addtoldap Net::LDAP::DN.new *dn.to_a[2..999]
       attrs = {
-        description: @description,
+        description: @name,
         objectclass: ["top", "locality"],
       }
       unless @user.ldap.add dn: dn, attributes: attrs
-        raise "Couldn't add #{@description} at #{dn} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
+        raise "Couldn't add #{@name} at #{dn} with attributes #{attrs.inspect}: #{@user.ldap.get_operation_result.message}"
       end
     end
   end
@@ -795,6 +800,7 @@ class GedcomEven < GedcomEntry
   attr_ldap :relativetodate, :relativetodate
   attr_ldap :baddata, :baddata
   attr_gedcom :place, :plac
+  attr_ldap :place, :placedn
   attr_reader :description
   attr_gedcom :description, :type
   attr_ldap :description, :description
@@ -812,9 +818,9 @@ class GedcomEven < GedcomEntry
   
   def to_s
     if @description
-      "#{@date} #{@description} #{@place.inspect}"
+      "#{@date} #{@description}"
     else
-      "#{@date} #{@place.inspect}"
+      "#{@date}"
     end
   end
 
@@ -834,14 +840,6 @@ class GedcomBirt < GedcomEven
       super(ldapentry: ldapentry, **options)
     else
       super(individual: parent, parent: parent, description: "Birth of #{parent.fullname}", **options)
-    end
-  end
-
-  def to_s
-    if date
-      "#{@description} #{date} #{@place}"
-    else
-      "#{@description} #{@place}"
     end
   end
 end
@@ -1182,11 +1180,6 @@ class GedcomName < GedcomEntry
     dn=basedn
     if @last
       @last = @last.gsub /\*$/, ''
-      #clean = @last
-      #if clean == ''
-      #  clean = 'unknown'
-      #end
-      #dn = "sn=#{clean},#{dn}"
       dn = Net::LDAP::DN.new "sn", @last == '' ? 'unknown' : @last, dn
       attrs = {
         sn: @last,
