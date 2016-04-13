@@ -369,57 +369,23 @@ class GedcomEntry
             end
           end
         end
-        begin
-          added = @user.ldap.add dn: @dn, attributes: attrs
-        rescue Exception => e
-          puts "Failed to add #{@dn.inspect} with attributes #{attrs.inspect}: #{e}"
-          added = false
-        end
-        unless added
-          message = @user.ldap.get_operation_result.message
-          if message =~ /Entry Already Exists/
-            unless @user.ldap.search(
-              base: @dn,
-              scope: Net::LDAP::SearchScope_BaseObject,
-              return_result: false,
-            ) do |entry|
-                populatefromldap entry
-                entry.each do |fieldname, value|
-                  value.map! do |s|
-                    if s.is_a? String
-                      s.downcase
-                    end
-                  end
-                  attrs.delete_if do |key, attrvalue|
-                    if key == fieldname
-                      if attrvalue.is_a? Array
-                        value == attrvalue.map do |s|
-                          if s.is_a? String
-                            s.downcase
-                          else
-                            s
-                          end
-                        end
-                      else
-                        if attrvalue.is_a? String
-                          value == [ attrvalue.downcase ]
-                        else
-                          value == [ attrvalue ]
-                        end
-                      end
-                    else
-                      false
-                    end
-                  end
-                end
-                unless attrs == {}
-                  puts "#{self.inspect} already exists at #{dn.inspect}; trying to add #{attrs.inspect}"
-                end
-              end
-              raise "Couldn't find #{self.inspect} at #{dn} even though we supposedly exist there: #{@user.ldap.get_operation_result.message}"
+        added = false
+        while not added
+          begin
+            added = @user.ldap.add dn: @dn, attributes: attrs
+          rescue Exception => e
+            puts "Failed to add #{@dn.inspect} with attributes #{attrs.inspect}: #{e}"
+            added = false
+          end
+          unless added
+            message = @user.ldap.get_operation_result.message
+            if message =~ /Entry Already Exists/
+              #puts "Can't add #{self.inspect} at #{@dn.inspect}"
+              @dn = Net::LDAP::DN.new rdnfield.to_s, rdnvalue, @dn
+              #puts "Trying again at #{@dn.inspect}"
+            else
+              raise "Couldn't add #{self.inspect} at #{@dn.inspect} with attributes #{attrs.inspect}: #{message}"
             end
-          else
-            raise "Couldn't add #{self.inspect} at #{@dn.inspect} with attributes #{attrs.inspect}: #{message}"
           end
         end
       end
