@@ -34,7 +34,7 @@ class User
 
   def initialize(username: username, password: password)
     @base = 'dc=deepeddy,dc=com'
-    @dn = "cn=#{Net::LDAP::DN.escape(username)},#{@base}"
+    @dn = Net::LDAP::DN.new "cn", username, @base
     @ldap = Net::LDAP.new(
       host: '192.168.99.100',
       port: 389,
@@ -79,7 +79,7 @@ class User
   end
 
   def makeou(ou)
-    oudn = "ou=#{Net::LDAP::DN.escape(ou)},#{self.dn}"
+    oudn = Net::LDAP::DN.new "ou", ou, self.dn
       attrs = {
         objectclass: ["top", "organizationalUnit"],
         ou: ou,
@@ -160,17 +160,17 @@ class User
       if matchdata = /^(?<realfirst>\S+)\s/.match(first)
         realfirst = matchdata[:realfirst]
         firstinit = first[0]
-        dn = "givenName=#{Net::LDAP::DN.escape(first)},givenname=#{Net::LDAP::DN.escape(realfirst)},givenname=#{Net::LDAP::DN.escape(firstinit)},sn=#{Net::LDAP::DN.escape(last)},ou=Names,#{@dn}"
+        dn = Net::LDAP::DN.new "givenName", first, "givenName", realfirst, "givenName", firstinit, "sn", last, "ou", "names", @dn
       else
         firstinit = first[0]
         if firstinit == first
-          dn = "givenName=#{Net::LDAP::DN.escape(first)},sn=#{Net::LDAP::DN.escape(last)},ou=Names,#{@dn}"
+          dn = Net::LDAP::DN.new "givenName", first, "sn", last, "ou", "names", @dn
         else
-          dn = "givenName=#{Net::LDAP::DN.escape(first)},givenname=#{Net::LDAP::DN.escape(firstinit)},sn=#{Net::LDAP::DN.escape(last)},ou=Names,#{@dn}"
+          dn = Net::LDAP::DN.new "givenName", first, "givenName", firstinit, "sn", last, "ou", "names", @dn
         end
       end
     else
-      dn = "sn=#{Net::LDAP::DN.escape(last)},#{@dn}"
+      dn = Net::LDAP::DN.new "sn", last, "ou", "names", @dn
     end
     unless @ldap.search(
       base: dn,
@@ -303,17 +303,17 @@ class GedcomEntry
   end
 
   def makeou(ou)
-    oudn = "ou=#{Net::LDAP::DN.escape(ou)},#{self.dn}"
-      attrs = {
-        objectclass: ["top", "organizationalUnit"],
-        ou: ou,
-      }
-      unless @user.ldap.add dn: oudn, attributes: attrs
-        message = @user.ldap.get_operation_result.message
-        unless message =~ /Entry Already Exists/
-          raise "Couldn't add ou #{oudn.inspect} with attributes #{attrs.inspect}: #{message}"
-        end
+    oudn = Net::LDAP::DN.new "ou", ou, self.dn
+    attrs = {
+      objectclass: ["top", "organizationalUnit"],
+      ou: ou,
+    }
+    unless @user.ldap.add dn: oudn, attributes: attrs
+      message = @user.ldap.get_operation_result.message
+      unless message =~ /Entry Already Exists/
+        raise "Couldn't add ou #{oudn.inspect} with attributes #{attrs.inspect}: #{message}"
       end
+    end
   end
 
   def to_s
@@ -334,7 +334,7 @@ class GedcomEntry
     [:uniqueidentifier, uid]
   end
   
-  def parentdn
+  def basedn
     if @parent
       @parent.dn
     else
@@ -349,7 +349,7 @@ class GedcomEntry
       if rdnvalue.is_a? Symbol
         puts "#{rdnfield.inspect} in #{self.inspect} is an unresolved reference (#{rdnvalue.inspect})"
       else
-        @dn = "#{rdnfield}=#{Net::LDAP::DN.escape(rdnvalue)},#{parentdn}"
+        @dn = Net::LDAP::DN.new rdnfield.to_s, rdnvalue, basedn
         @user.objectfromdn[@dn] = self
         attrs = {}
         attrs[:objectclass] = ["top", @@classtoldapclass[self.class].to_s]
@@ -368,7 +368,7 @@ class GedcomEntry
               unless value == ""
                 if value.kind_of? GedcomEntry
                   if value.dn
-                    attrs[ldapfieldname] = value.dn
+                    attrs[ldapfieldname] = value.dn.to_s
                   end
                 else
                   attrs[ldapfieldname] = value
@@ -441,10 +441,10 @@ class GedcomEntry
       else
         (rdnfield, rdnvalue) = dest.rdn
       end
-      aliasdn = "#{rdnfield}=#{Net::LDAP::DN.escape(rdnvalue)},#{self.dn}"
+      aliasdn = Net::LDAP::DN.new rdnfield.to_s, rdnvalue, self.dn
       attrs = {
         objectclass: ["alias", "extensibleObject"],
-        aliasedobjectname: dest.dn,
+        aliasedobjectname: dest.dn.to_s,
       }
       attrs[rdnfield] = rdnvalue
       unless @user.ldap.add dn: aliasdn, attributes: attrs
@@ -958,7 +958,7 @@ class GedcomMarr < GedcomEven
     end
   end
 
-  def parentdn
+  def basedn
     @couple[0].dn
   end
 end
@@ -986,7 +986,7 @@ class GedcomDiv < GedcomEven
     end
   end
 
-  def parentdn
+  def basedn
     @couple[0].dn
   end
 end
@@ -1091,8 +1091,8 @@ class GedcomIndi < GedcomEntry
   attr_ldap :last, :sn
   attr_ldap :suffix, :initials
 
-  def parentdn
-    "ou=Individuals,#{@source.dn}"
+  def basedn
+    Net::LDAP::DN.new "ou", "Individuals", @source.dn
   end
   
   def to_s
@@ -1210,19 +1210,20 @@ class GedcomName < GedcomEntry
     super(fieldname: fieldname, first: first, last: last, suffix: suffix, **options)
   end
   
-  def parentdn
-    "ou=Names,#{@user.dn}"
+  def basedn
+    Net::LDAP::DN.new "ou", "Names", @user.dn
   end
   
   def addtoldap
-    dn=parentdn
+    dn=basedn
     if @last
       @last = @last.gsub /\*$/, ''
-      clean = Net::LDAP::DN.escape(@last)
-      if clean == ''
-        clean = 'unknown'
-      end
-      dn = "sn=#{clean},#{dn}"
+      #clean = @last
+      #if clean == ''
+      #  clean = 'unknown'
+      #end
+      #dn = "sn=#{clean},#{dn}"
+      dn = Net::LDAP::DN.new "sn", @last == '' ? 'unknown' : @last, dn
       attrs = {
         sn: @last,
         objectclass: ["top", "gedcomName"],
@@ -1241,7 +1242,7 @@ class GedcomName < GedcomEntry
         firstinitial = @first[0]
         
         unless firstinitial == @first
-          dn = "givenName=#{Net::LDAP::DN.escape(firstinitial)},#{dn}"
+          dn = Net::LDAP::DN.new "givenName", firstinitial, dn
           unless @user.ldap.search(
             base: dn,
             scope: Net::LDAP::SearchScope_BaseObject,
@@ -1255,7 +1256,7 @@ class GedcomName < GedcomEntry
 
           if matchdata = /^(?<realfirst>\S+)\s/.match(@first)
             realfirst = matchdata[:realfirst]
-            dn = "givenName=#{Net::LDAP::DN.escape(realfirst)},#{dn}"
+            dn = Net::LDAP::DN.new "givenName", realfirst, dn
             unless @user.ldap.search(
               base: dn,
               scope: Net::LDAP::SearchScope_BaseObject,
@@ -1269,11 +1270,7 @@ class GedcomName < GedcomEntry
           end
         end
 
-        clean = Net::LDAP::DN.escape(@first)
-        if clean == ''
-          clean = 'unknown'
-        end
-        dn = "givenName=#{clean},#{dn}"
+        dn = Net::LDAP::DN.new "givenName", @first == '' ? 'unknown' : @first, dn
         unless @user.ldap.search(
           base: dn,
           scope: Net::LDAP::SearchScope_BaseObject,
@@ -1286,11 +1283,7 @@ class GedcomName < GedcomEntry
         end
         
         if @suffix
-          clean = Net::LDAP::DN.escape(@suffix)
-          if clean == ''
-            clean = 'unknown'
-          end
-          dn = "initials=#{clean},#{dn}"
+          dn = Net::LDAP::DN.new "initials", @suffix == '' ? 'unknown' : @suffix, dn
           unless @user.ldap.search(
             base: dn,
             scope: Net::LDAP::SearchScope_BaseObject,
@@ -1371,8 +1364,8 @@ class GedcomSour < GedcomEntry
     end
   end
 
-  def parentdn
-    "ou=Sources,#{(@source || @user).dn}"
+  def basedn
+    Net::LDAP::DN.new "ou", "Sources", (@source || @user).dn
   end
   
   def rdn
