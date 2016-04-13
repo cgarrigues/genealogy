@@ -132,7 +132,7 @@ class User
       if message =~ /Attribute or Value Exists/
         #puts "Couldn't modify attributes #{ops} for #{dn}: #{message}"
       else
-        raise "Couldn't modify attributes #{ops} for #{dn}: #{message}"
+        puts "Couldn't modify attributes #{ops} for #{dn}: #{message}"
       end
     end
   end
@@ -414,7 +414,7 @@ class GedcomEntry
         end
       end
     else
-      puts "Can't add alias under #{self.inspect} to #{dest.inspect} because the latter has no DN"
+      puts "Can't add alias under #{dn.inspect} to #{dest.inspect} because the latter has no DN"
     end
   end
 
@@ -741,11 +741,7 @@ class GedcomPlac < GedcomEntry
   end
   
   def to_s
-    if parent
-      "#{@name}, #{parent}"
-    else
-      "#{@name}"
-    end
+    @name
   end
 end
 
