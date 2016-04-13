@@ -78,8 +78,8 @@ class User
     makeou "Sources"
   end
 
-  def makeou(ou)
-    oudn = Net::LDAP::DN.new "ou", ou, self.dn
+  def makeou(ou, basedn=self.dn)
+    oudn = Net::LDAP::DN.new "ou", ou, basedn
       attrs = {
         objectclass: ["top", "organizationalUnit"],
         ou: ou,
@@ -299,20 +299,6 @@ class GedcomEntry
     end
     if @parent
       @parent.addfields(fieldname => self)
-    end
-  end
-
-  def makeou(ou)
-    oudn = Net::LDAP::DN.new "ou", ou, self.dn
-    attrs = {
-      objectclass: ["top", "organizationalUnit"],
-      ou: ou,
-    }
-    unless @user.ldap.add dn: oudn, attributes: attrs
-      message = @user.ldap.get_operation_result.message
-      unless message =~ /Entry Already Exists/
-        raise "Couldn't add ou #{oudn.inspect} with attributes #{attrs.inspect}: #{message}"
-      end
     end
   end
 
@@ -1357,8 +1343,8 @@ class GedcomSour < GedcomEntry
     @authors = []
     if filename
       super(filename: filename, title: File.basename(filename), rawdata: (File.read filename), **options)
-      makeou "Individuals"
-      makeou "Sources"
+      @user.makeou "Individuals", self.dn
+      @user.makeou "Sources", self.dn
     else
       super(title: arg, **options)
     end
