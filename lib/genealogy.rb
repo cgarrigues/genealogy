@@ -448,7 +448,7 @@ class GedcomEntry
         end
       end
     else
-      puts "Can't add alias under #{self.inspect} to #{dest.inspect} because it has no DN"
+      puts "Can't add alias under #{self.inspect} to #{dest.inspect} because the latter has no DN"
     end
   end
 
@@ -473,28 +473,25 @@ class GedcomEntry
       else
         instance_variable_set "@#{fieldname}".to_sym, value
       end
-      if @user and @dn
-        if fieldname = (@@fieldtoldap[self.class][fieldname] || @@fieldtoldap[self.class.superclass][fieldname])
-          if @noldapobject
-            (rdnfield, rdnvalue) = self.rdn
-            if rdnfield == fieldname
-              # We weren't in LDAP, but now we can be added
-              puts "delayed addition of #{@dn} to ldap"
-              self.addtoldap
+      if fieldname = (@@fieldtoldap[self.class][fieldname] || @@fieldtoldap[self.class.superclass][fieldname])
+        (rdnfield, rdnvalue) = self.rdn
+        if not(dn) and (rdnfield == fieldname)
+          @dn = Net::LDAP::DN.new fieldname.to_s, value, basedn
+          #puts "delayed addition of #{@dn} to ldap"
+          self.addtoldap
+        end
+        if not(@noldapobject) and @user and @dn
+          syntax = @user.attributemetadata[fieldname][:syntax]
+          if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
+            if value.dn
+              ops.push [:add, fieldname, value.dn]
             end
+          elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
+            ops.push [:add, fieldname, value.to_s]
+          elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
+            ops.push [:add, fieldname, value.to_s.upcase]
           else
-            syntax = @user.attributemetadata[fieldname][:syntax]
-            if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
-              if value.dn
-                ops.push [:add, fieldname, value.dn]
-              end
-            elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
-              ops.push [:add, fieldname, value.to_s]
-            elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
-              ops.push [:add, fieldname, value.to_s.upcase]
-            else
-              ops.push [:add, fieldname, value]
-            end
+            ops.push [:add, fieldname, value]
           end
         end
       end
