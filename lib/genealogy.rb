@@ -656,7 +656,6 @@ class GedcomDate < GedcomEntry
   
   def initialize(arg: "", parent: nil, **options)
     #puts "#{self.class} #{arg.inspect}"
-    @events = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = [] }}}}
     raw = arg
     args = arg.split(/\s+/)
     relative = 0
@@ -782,19 +781,12 @@ class GedcomEven < GedcomEntry
   attr_gedcom :sources, :sour
   attr_ldap :sources, :sourcedns
 
-  def initialize(source: nil, **options)
-    super(**options)
-    @sources = []
-    if source
-      addfields(:sour => source)
-    end
-  end
-  
+
   def to_s
-    if @description
-      "#{@date} #{@description}"
+    if date
+      "#{@description} #{date} #{@place}"
     else
-      "#{@date}"
+      "#{@description} ? #{@place}"
     end
   end
 
@@ -832,14 +824,6 @@ class GedcomDeat < GedcomEven
       super(individual: parent, parent: parent, description: "Death of #{parent.fullname}", **options)
     end
   end
-
-  def to_s
-    if date
-      "#{@description} #{date} #{@place}"
-    else
-      "#{@description} ? #{@place}"
-    end
-  end
 end
 
 class GedcomBuri < GedcomEven
@@ -852,19 +836,6 @@ class GedcomBuri < GedcomEven
       super(ldapentry: ldapentry, **options)
     else
       super(individual: parent, parent: parent, description: "Burial of #{parent.fullname}", **options)
-    end
-  end
-
-  def to_s
-    if @individual
-      name = @individual.names[0]
-    else
-      name = ""
-    end
-    if @date
-      "#{description} #{@date} #{@place}"
-    else
-      "#{description} #{@place}"
     end
   end
 end
@@ -973,10 +944,6 @@ class GedcomAdop < GedcomEven
     end
     super(**options)
   end
-
-  def to_s
-    @individual.to_s
-  end
 end
 
 class GedcomBapm < GedcomEven
@@ -989,14 +956,6 @@ class GedcomBapm < GedcomEven
       super(ldapentry: ldapentry, **options)
     else
       super(individual: parent, parent: parent, description: "Baptism of #{parent.fullname}", **options)
-    end
-  end
-
-  def to_s
-    if date
-      "#{@description} #{date} #{@place}"
-    else
-      "#{@description} #{@place}"
     end
   end
 end
