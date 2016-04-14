@@ -75,7 +75,6 @@ class User
     end
     @objectfromdn = Hash.new { |hash, key| hash[key] = getobjectfromdn key}
     makeou "Names"
-    makeou "Places"
     makeou "Sources"
   end
 
@@ -739,7 +738,7 @@ class GedcomPlac < GedcomEntry
   end
   
   def basedn
-    Net::LDAP::DN.new "ou", "Places", @user.dn
+    Net::LDAP::DN.new "ou", "Places", "dc", "deepeddy", "dc", "com"
   end
   
   def rdn
