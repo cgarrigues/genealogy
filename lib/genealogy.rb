@@ -28,13 +28,16 @@ end
 
 class User
   attr_reader :ldap
+  attr_reader :basedn
+  attr_reader :username
   attr_reader :dn
   attr_reader :objectfromdn
   attr_reader :attributemetadata
 
   def initialize(username: username, password: password)
-    @base = 'dc=deepeddy,dc=com'
-    @dn = Net::LDAP::DN.new "cn", username, @base
+    @basedn = 'dc=deepeddy,dc=com'
+    @username = username
+    @dn = Net::LDAP::DN.new "cn", @username, @basedn
     @ldap = Net::LDAP.new(
       host: '192.168.99.100',
       port: 389,
@@ -107,7 +110,7 @@ class User
       scope: Net::LDAP::SearchScope_BaseObject,
       return_result: false,
     ) do |entry|
-        object = classfromentry(entry).new ldapentry: entry, user: self
+        object = classfromentry(entry).new ldapentry: entry, user: self, dn: dn
       end
       raise "Couldn't find #{dn}: #{@ldap.get_operation_result.message}"
     end
@@ -195,6 +198,12 @@ class User
       raise "Couldn't search #{@dn} for names: #{@ldap.get_operation_result.message}"
     end
   end
+
+  def findtasks
+    findobjects("*", Net::LDAP::DN.new("ou", "Tasks", basedn)) {|task|
+      task.describeinfull
+    }
+  end
 end
 
 class LdapAlias
@@ -206,7 +215,7 @@ class LdapAlias
   end
 
   def object
-    @user.objectfromdn[dn]
+    @user.objectfromdn[@dn]
   end
 
   def to_s
@@ -280,6 +289,7 @@ class GedcomEntry
         instance_variable_set "@#{fieldname}".to_sym, value[0]
       end
     end
+    @dn = ldapentry.dn
   end
 
   def initialize(ldapentry: nil, **options)
@@ -373,6 +383,8 @@ class GedcomEntry
           end
         end
         added = false
+        dupcount = 0
+        dupbase = dn
         while not added
           begin
             added = @user.ldap.add dn: @dn, attributes: attrs
@@ -383,13 +395,15 @@ class GedcomEntry
           unless added
             message = @user.ldap.get_operation_result.message
             if message =~ /Entry Already Exists/
-              #puts "Can't add #{self.inspect} at #{@dn.inspect}"
+              dupcount += 1
               @dn = Net::LDAP::DN.new rdnfield.to_s, rdnvalue, @dn
-              #puts "Trying again at #{@dn.inspect}"
             else
               raise "Couldn't add #{self.inspect} at #{@dn.inspect} with attributes #{attrs.inspect}: #{message}"
             end
           end
+        end
+        if dupcount == 1
+          GedcomConflictingEvents.new baseevent: dupbase.to_s, user: @user
         end
       end
     end
@@ -738,7 +752,7 @@ class GedcomPlac < GedcomEntry
   end
   
   def basedn
-    Net::LDAP::DN.new "ou", "Places", "dc", "deepeddy", "dc", "com"
+    Net::LDAP::DN.new "ou", "Places", @user.basedn
   end
   
   def rdn
@@ -1371,16 +1385,27 @@ class GedcomPage < GedcomEntry
       super(pageno: arg, source: parent, parent: parent, **options)
       #Change the source's parent to point to us instead of the source itself.
       @source.parent.modifyfields(sour: {parent => self})
+    else
+      super(arg: arg, **options)
     end
   end
 
+  def source
+    if @source
+      @source
+    else
+      parentdn = Net::LDAP::DN.new *((Net::LDAP::DN.new dn).to_a[2..999])
+      @user.objectfromdn[parentdn]
+    end
+  end
+  
   def rdn
     @noldapobject = not(@pageno)
     [:pageno, pageno]
   end
 
   def to_s
-    "#{@source} Page #{@pageno}"
+    "#{source} Page #{@pageno}"
   end
 end
 
@@ -1484,5 +1509,39 @@ class GedcomFam < GedcomEntry
     elsif @wife
       @wife.showevents
     end
+  end
+end
+
+class GedcomTask < GedcomEntry
+  attr_ldap :uniqueidentifier, :uniqueidentifier
+
+  @@counter = Time.new.to_i
+  
+  def basedn
+    Net::LDAP::DN.new "ou", "Tasks", @user.basedn
+  end
+  
+  def rdn
+    @@counter += @@counter
+    [:uniqueidentifier, "#{@user.username}-#{@@counter}"]
+  end
+end
+
+class GedcomConflictingEvents < GedcomTask
+  ldap_class :conflictingevents
+  attr_reader :baseevent
+  attr_ldap :baseevent, :eventdn
+
+  def describeinfull
+    puts "Conflicting records (#{@uniqueidentifier})"
+    event = @baseevent.object
+    while event
+      puts "    #{event.to_s}"
+      event = @user.findobjects(@@classtoldapclass[event.class], event.dn)[0]
+    end
+  end
+  
+  def to_s
+    "Conflict at #{@baseevent}"
   end
 end

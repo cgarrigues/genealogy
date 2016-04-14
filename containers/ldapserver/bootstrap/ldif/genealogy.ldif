@@ -4,3 +4,9 @@ objectClass: top
 objectClass: organizationalUnit
 ou: Places
 
+dn: ou=Tasks,dc=deepeddy,dc=com
+changetype: add
+objectClass: top
+objectClass: organizationalUnit
+ou: Tasks
+

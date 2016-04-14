@@ -213,6 +213,14 @@ attributetype ( 1.3.6.1.4.1.19106.1.1.27
         SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
         )
 
+attributetype ( 1.3.6.1.4.1.19106.1.1.28
+	NAME 'eventDN'
+	DESC 'DN of event'
+        EQUALITY distinguishedNameMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
+	SINGLE-VALUE
+        )
+	
 objectclass ( 1.3.6.1.4.1.19106.1.2.1
 	NAME 'gedcomSource'
 	DESC 'a gedcom source file'
@@ -304,3 +312,10 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.12
 	MUST (couple)
 	)
 
+objectclass ( 1.3.6.1.4.1.19106.1.2.13
+	NAME 'ConflictingEvents'
+	DESC 'tree of events that conflict'
+	STRUCTURAL
+	MUST (objectClass $ uniqueIdentifier )
+	MAY (eventDn)
+	)
