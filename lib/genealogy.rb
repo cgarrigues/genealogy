@@ -703,7 +703,7 @@ end
 class GedcomPlac < GedcomEntry
   ldap_class :locality
   attr_reader :name
-  attr_ldap :name, :description
+  attr_ldap :name, :l
   attr_reader :places
   attr_reader :events
 
@@ -713,7 +713,7 @@ class GedcomPlac < GedcomEntry
     else
       @user = user
       args = arg.split /\s*,\s*/
-      dn = Net::LDAP::DN.new *(args.map {|i| ["description", i]}.flatten), basedn
+      dn = Net::LDAP::DN.new *(args.map {|i| ["l", i]}.flatten), basedn
       name = args[0]
       super(name: name, dn: dn, parent: parent, **options)
       makealias parent
@@ -728,7 +728,7 @@ class GedcomPlac < GedcomEntry
     )
       addtoldap Net::LDAP::DN.new *dn.to_a[2..999]
       attrs = {
-        description: @name,
+        l: @name,
         objectclass: ["top", "locality"],
       }
       unless @user.ldap.add dn: dn, attributes: attrs
@@ -742,8 +742,8 @@ class GedcomPlac < GedcomEntry
   end
   
   def rdn
-    @noldapobject = not(@description)
-    [:description, @description]
+    @noldapobject = not(@name)
+    [:l, @name]
   end
   
   def to_s
