@@ -250,7 +250,7 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.4
 	DESC 'a gedcom event'
 	STRUCTURAL
 	MUST (objectClass $ description)
-	MAY ( gedcomDate $ year $ month $ day $ relativeToDate $ placeDN $ sourceDNs $ baddata)
+	MAY ( individualDN $ gedcomDate $ year $ month $ day $ relativeToDate $ placeDN $ sourceDNs $ baddata)
 	)
 
 objectclass ( 1.3.6.1.4.1.19106.1.2.5

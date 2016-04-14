@@ -729,7 +729,7 @@ class GedcomPlac < GedcomEntry
       args = arg.split /\s*,\s*/
       dn = Net::LDAP::DN.new *(args.map {|i| ["l", i]}.flatten), basedn
       name = args[0]
-      super(name: name, dn: dn, parent: parent, **options)
+      super(name: name, dn: dn, individual: parent, parent: parent, **options)
       makealias parent
     end
   end
@@ -793,13 +793,22 @@ class GedcomEven < GedcomEntry
   attr_reader :sources
   attr_gedcom :sources, :sour
   attr_ldap :sources, :sourcedns
+  attr_reader :individual
+  attr_ldap :individual, :individualdn
 
+  def initialize(parent: nil, ldapentry: nil, **options)
+    if ldapentry
+      super(ldapentry: ldapentry, **options)
+    else
+      super(individual: parent, parent: parent, **options)
+    end
+  end
 
   def to_s
     if date
-      "#{@description} #{date} #{@place}"
+      "#{@individual} #{@description} #{date} #{@place}"
     else
-      "#{@description} ? #{@place}"
+      "#{@individual} #{@description} ? #{@place}"
     end
   end
 
@@ -811,8 +820,6 @@ end
 
 class GedcomBirt < GedcomEven
   ldap_class :gedcombirth
-  attr_reader :individual
-  attr_ldap :individual, :individualdn
 
   def initialize(parent: nil, ldapentry: nil, **options)
     if ldapentry
@@ -825,8 +832,6 @@ end
 
 class GedcomDeat < GedcomEven
   ldap_class :gedcomdeath
-  attr_reader :individual
-  attr_ldap :individual, :individualdn
   attr_gedcom :cause, :caus
   attr_ldap :cause, :cause
 
@@ -913,8 +918,6 @@ end
 
 class GedcomAdop < GedcomEven
   ldap_class :gedcomadoption
-  attr_reader :individual
-  attr_ldap :individual, :individualdn
   attr_reader :parents
   attr_ldap :parents, :parentdns
 
