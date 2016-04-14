@@ -710,7 +710,6 @@ class GedcomPlac < GedcomEntry
   attr_reader :events
 
   def initialize(ldapentry: nil, parent: nil, arg: "", user: nil, **options)
-    puts "GedcomPlac #{ldapentry}, #{parent.inspect}, #{arg.inspect}"
     if ldapentry
       super(ldapentry: ldapentry, user: user)
     else
