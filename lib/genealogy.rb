@@ -716,7 +716,7 @@ class GedcomPlac < GedcomEntry
       dn = Net::LDAP::DN.new *(args.map {|i| ["description", i]}.flatten), basedn
       name = args[0]
       super(name: name, dn: dn, parent: parent, **options)
-      makealias parent, name
+      makealias parent
     end
   end
 
