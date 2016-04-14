@@ -137,8 +137,8 @@ class User
     end
   end
   
-  def findobjects(ldapclass, base, &block)
-    if block
+  def findobjects(ldapclass, base)
+    if block_given?
       unless @ldap.search(
         base: base,
       scope: Net::LDAP::SearchScope_SingleLevel,
@@ -148,7 +148,7 @@ class User
       ) do |entry|
           object = classfromentry(entry).new ldapentry: entry, user: self
           @objectfromdn[object.dn] = object
-          block.call object
+          yield object
         end
         raise "Couldn't search #{@dn} for events: #{@ldap.get_operation_result.message}"
       end
@@ -190,7 +190,7 @@ class User
         events = findobjects('gedcomEvent', indi.dn).sort_by do |event|
           [event.year||9999, event.month||0, event.day||0, event.relativetodate||0]
         end.each do |event|
-          puts "    #{event.date}\t#{event.description}"
+          puts "    #{event.date}\t#{event.description}\t#{event.place}"
         end
       end
       raise "Couldn't search #{@dn} for names: #{@ldap.get_operation_result.message}"
@@ -210,6 +210,10 @@ class LdapAlias
     @user.objectfromdn[dn]
   end
 
+  def to_s
+    object.to_s
+  end
+  
   def inspect
     "#<LdapAlias #{dn}>"
   end
@@ -705,13 +709,18 @@ class GedcomPlac < GedcomEntry
   attr_reader :places
   attr_reader :events
 
-  def initialize(parent: nil, arg: "", user: nil, **options)
-    @user = user
-    args = arg.split /\s*,\s*/
-    dn = Net::LDAP::DN.new *(args.map {|i| ["description", i]}.flatten), basedn
-    name = args[0]
-    super(name: name, dn: dn, parent: parent, **options)
-    makealias parent, name
+  def initialize(ldapentry: nil, parent: nil, arg: "", user: nil, **options)
+    puts "GedcomPlac #{ldapentry}, #{parent.inspect}, #{arg.inspect}"
+    if ldapentry
+      super(ldapentry: ldapentry, user: user)
+    else
+      @user = user
+      args = arg.split /\s*,\s*/
+      dn = Net::LDAP::DN.new *(args.map {|i| ["description", i]}.flatten), basedn
+      name = args[0]
+      super(name: name, dn: dn, parent: parent, **options)
+      makealias parent, name
+    end
   end
 
   def addtoldap(dn=@dn)
@@ -741,7 +750,13 @@ class GedcomPlac < GedcomEntry
   end
   
   def to_s
-    @name
+    parts = []
+    Net::LDAP::DN.new(dn).each_pair do |key, val|
+      if key == "description"
+        parts.push val
+      end
+    end
+    parts.join(', ')
   end
 end
 
@@ -758,6 +773,7 @@ class GedcomEven < GedcomEntry
   attr_reader :relativetodate
   attr_ldap :relativetodate, :relativetodate
   attr_ldap :baddata, :baddata
+  attr_reader :place
   attr_gedcom :place, :plac
   attr_ldap :place, :placedn
   attr_reader :description
@@ -1116,8 +1132,11 @@ end
 class GedcomName < GedcomEntry
   ldap_class :gedcomname
   attr_reader :first
+  attr_ldap :first, :givenname
   attr_reader :last
+  attr_ldap :last, :sn
   attr_reader :suffix
+  attr_ldap :suffix, :initials
   attr_accessor :dn
   
   def initialize(arg: "", fieldname: fieldname, **options)
@@ -1391,7 +1410,7 @@ class GedcomPage < GedcomEntry
   attr_gedcom :source, :sour
   
   def initialize(arg: "", parent: nil, **options)
-    if parent.dn
+    if parent and parent.dn
       super(pageno: arg, source: parent, parent: parent, **options)
       #Change the source's parent to point to us instead of the source itself.
       @source.parent.modifyfields(sour: {parent => self})
