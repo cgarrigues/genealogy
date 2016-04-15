@@ -279,42 +279,16 @@ class Entry
       Family
     elsif fieldname == :addr
       Address
-    elsif fieldname == :adop
-      Adoption
-    elsif fieldname == :bapm
-      Baptism
-    elsif fieldname == :birt
-      Birth
-    elsif fieldname == :buri
-      Burial
     elsif fieldname == :char
       CharacterSet
-    elsif fieldname == :date
-      RoughDate
-    elsif fieldname == :deat
-      Death
-    elsif fieldname == :div
-      Divorce
-    elsif fieldname == :even
-      Event
     elsif fieldname == :head
       Head
     elsif fieldname == :indi
       Individual
-    elsif fieldname == :name
-      Name
-    elsif fieldname == :marr
-      Marriage
     elsif fieldname == :note
       Note
-    elsif fieldname == :offi
-      Officiator
     elsif fieldname == :page
       Page
-    elsif fieldname == :plac
-      Place
-    elsif fieldname == :sex
-      Gender
     elsif fieldname == :sour
       Source
     else
@@ -807,6 +781,20 @@ class Event < Entry
   attr_reader :individual
   attr_ldap :individual, :individualdn
 
+  def self.fieldnametoclass(fieldname)
+    if [:auth, :caus, :cont, :corp, :file, :form, :phon, :publ, :titl, :type, :vers].member? fieldname
+      StringArgument
+    elsif [:fams, :famc, :fam].member? fieldname
+      Family
+    elsif fieldname == :date
+      RoughDate
+    elsif fieldname == :plac
+      Place
+    else
+      super
+    end
+  end
+  
   def initialize(parent: nil, ldapentry: nil, **options)
     if ldapentry
       super(ldapentry: ldapentry, **options)
@@ -875,6 +863,14 @@ class Marriage < Event
   attr_gedcom :officiator, :offi
   attr_ldap :officiator, :officiator
 
+  def self.fieldnametoclass(fieldname)
+    if fieldname == :offi
+      Officiator
+    else
+      super
+    end
+  end
+  
   def initialize(parent: nil, ldapentry: nil, **options)
     @parents = []
     if ldapentry
@@ -1013,6 +1009,32 @@ class Individual < Entry
   attr_ldap :last, :sn
   attr_ldap :suffix, :initials
 
+  def self.fieldnametoclass(fieldname)
+    if [:auth, :caus, :cont, :corp, :file, :form, :phon, :publ, :titl, :type, :vers].member? fieldname
+      StringArgument
+    elsif [:fams, :famc, :fam].member? fieldname
+      Family
+    elsif fieldname == :adop
+      Adoption
+    elsif fieldname == :bapm
+      Baptism
+    elsif fieldname == :birt
+      Birth
+    elsif fieldname == :buri
+      Burial
+    elsif fieldname == :deat
+      Death
+    elsif fieldname == :even
+      Event
+    elsif fieldname == :name
+      Name
+    elsif fieldname == :sex
+      Gender
+    else
+      super
+    end
+  end
+  
   def basedn
     Net::LDAP::DN.new "ou", "Individuals", @source.dn
   end
@@ -1419,6 +1441,18 @@ class Family < Entry
   attr_gedcom :events, :even
   attr_reader :children
   attr_gedcom :children, :chil
+  
+  def self.fieldnametoclass(fieldname)
+    if fieldname == :div
+      Divorce
+#    elsif fieldname == :even
+#      Event
+    elsif fieldname == :marr
+      Marriage
+    else
+      super
+    end
+  end
   
   def initialize(**options)
     @events = []
