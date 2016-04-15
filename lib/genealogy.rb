@@ -825,7 +825,6 @@ class Place < Entry
 end
 
 class Event < Entry
-  ldap_class :gedcomevent
   attr_reader :date
   attr_ldap :date, :gedcomdate
   attr_reader :year
@@ -846,8 +845,6 @@ class Event < Entry
   attr_reader :sources
   attr_gedcom :sources, :sour
   attr_ldap :sources, :sourcedns
-  attr_reader :individual
-  attr_ldap :individual, :individualdn
 
   def self.fieldnametoclass(fieldname)
     if [:fams, :famc, :fam].member? fieldname
@@ -876,6 +873,9 @@ class Event < Entry
 end
 
 class IndividualEvent < Event
+  ldap_class :gedcomevent
+  attr_reader :individual
+  attr_ldap :individual, :individualdn
 
   def initialize(parent: nil, ldapentry: nil, **options)
     if ldapentry
@@ -1080,7 +1080,7 @@ class Individual < Entry
     elsif fieldname == :deat
       Death
     elsif fieldname == :even
-      Event
+      IndividualEvent
     elsif fieldname == :name
       Name
     elsif fieldname == :sex
@@ -1500,8 +1500,8 @@ class Family < Entry
   def self.fieldnametoclass(fieldname)
     if fieldname == :div
       Divorce
-#    elsif fieldname == :even
-#      Event
+    elsif fieldname == :even
+      CoupleEvent
     elsif fieldname == :marr
       Marriage
     else
