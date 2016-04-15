@@ -273,7 +273,9 @@ class GedcomEntry
   end
 
   def self.fieldnametoclass(fieldname)
-    if GedcomEntry.definedfieldnames.member? fieldname
+    if [:corp, :caus, :auth, :publ, :phon, :vers, :form, :file].member? fieldname
+      GedcomString
+    elsif GedcomEntry.definedfieldnames.member? fieldname
       Module.const_get ("Gedcom" + fieldname.to_s.capitalize)
     else
       GedcomEntry
@@ -625,30 +627,6 @@ class GedcomString < GedcomEntry
   def initialize(fieldname: "", arg: "", parent: nil, **options)
     parent.addfields(fieldname => arg)
   end
-end
-
-class GedcomCorp < GedcomString
-end
-
-class GedcomCaus < GedcomString
-end
-
-class GedcomAuth < GedcomString
-end
-
-class GedcomPubl < GedcomString
-end
-
-class GedcomPhon < GedcomString
-end
-
-class GedcomVers < GedcomString
-end
-
-class GedcomForm < GedcomString
-end
-
-class GedcomFile < GedcomString
 end
 
 class GedcomDate < GedcomEntry
