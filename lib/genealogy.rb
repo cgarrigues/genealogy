@@ -1,5 +1,5 @@
 $LOAD_PATH.unshift("#{File.dirname(__FILE__)}/../lib")
-require "genealogy/version"
+require 'genealogy/version'
 require 'ansel'
 require 'net/ldap'
 require 'net/ldap/dn'
@@ -243,56 +243,131 @@ class Entry
   attr_reader :baddata
   attr_accessor :dn
 
-  @@multivaluevariables = Hash.new { |hash, key| hash[key] = Set.new}
-  @@gedcomtofield = Hash.new { |hash, key| hash[key] = Hash.new}
-  @@fieldtoldap = Hash.new { |hash, key| hash[key] = Hash.new}
-  @@ldaptofield = Hash.new { |hash, key| hash[key] = Hash.new}
-  @@classtoldapclass = Hash.new
-  @@ldapclasstoclass = Hash.new
+  class << self
 
-  def self.attr_multi(fieldname)
-    @@multivaluevariables[self].add fieldname
-  end
-
-  def self.attr_gedcom(fieldname, gedcomname)
-    @@gedcomtofield[self][gedcomname] = fieldname
-  end
-  
-  def self.attr_ldap(fieldname, ldapname)
-    @@fieldtoldap[self][fieldname] = ldapname
-    @@ldaptofield[self][ldapname] = fieldname
-  end
-
-  def self.ldap_class(ldapclass)
-    @@classtoldapclass[self] = ldapclass
-    @@ldapclasstoclass[ldapclass] = self
-  end
-
-  def self.getclassfromldapclass(ldapclass)
-    @@ldapclasstoclass[ldapclass]
-  end
-
-  def self.fieldnametoclass(fieldname)
-    if [:auth, :caus, :cont, :corp, :file, :form, :phon, :publ, :titl, :type, :vers].member? fieldname
-      StringArgument
-    elsif [:fams, :famc, :fam].member? fieldname
-      Family
-    elsif fieldname == :addr
-      Address
-    elsif fieldname == :char
-      CharacterSet
-    elsif fieldname == :head
-      Head
-    elsif fieldname == :indi
-      Individual
-    elsif fieldname == :note
-      Note
-    elsif fieldname == :page
-      Page
-    elsif fieldname == :sour
-      Source
-    else
-      Entry
+    @@multivaluefields = Hash.new { |hash, key| hash[key] = Set.new}
+    @@gedcomtofield = Hash.new { |hash, key| hash[key] = Hash.new}
+    @@fieldtoldap = Hash.new { |hash, key| hash[key] = Hash.new}
+    @@ldaptofield = Hash.new { |hash, key| hash[key] = Hash.new}
+    @@classtoldapclass = Hash.new
+    @@ldapclasstoclass = Hash.new
+    
+    def attr_multi(fieldname)
+      @@multivaluefields[self].add fieldname
+    end
+    
+    def attr_gedcom(fieldname, gedcomname)
+      @@gedcomtofield[self][gedcomname] = fieldname
+    end
+    
+    def attr_ldap(fieldname, ldapname)
+      @@fieldtoldap[self][fieldname] = ldapname
+      @@ldaptofield[self][ldapname] = fieldname
+    end
+    
+    def ldap_class(ldapclass)
+      @@classtoldapclass[self] = ldapclass
+      @@ldapclasstoclass[ldapclass] = self
+    end
+    
+    def getclassfromldapclass(ldapclass)
+      @@ldapclasstoclass[ldapclass]
+    end
+    
+    def fieldnametoclass(fieldname)
+      if [:auth, :caus, :cont, :corp, :file, :form, :phon, :publ, :titl, :type, :vers].member? fieldname
+        StringArgument
+      elsif [:fams, :famc, :fam].member? fieldname
+        Family
+      elsif fieldname == :addr
+        Address
+      elsif fieldname == :char
+        CharacterSet
+      elsif fieldname == :head
+        Head
+      elsif fieldname == :indi
+        Individual
+      elsif fieldname == :note
+        Note
+      elsif fieldname == :page
+        Page
+      elsif fieldname == :sour
+        Source
+      else
+        Entry
+      end
+    end
+    
+    def ldaptofield(fieldname)
+      klass = self
+      newfield = nil
+      until klass == Object do
+        newfield ||= @@ldaptofield[klass][fieldname]
+        klass = klass.superclass
+      end
+      newfield
+    end
+    
+    def gedcomtofield(fieldname)
+      klass = self
+      newfield = nil
+      until klass == Object do
+        newfield ||= @@gedcomtofield[klass][fieldname]
+        klass = klass.superclass
+      end
+      newfield
+    end
+    
+    def classtoldapclass
+      klass = self
+      ldapclass = nil
+      until klass == Object do
+        ldapclass ||= @@classtoldapclass[klass]
+        klass = klass.superclass
+      end
+      ldapclass
+    end
+    
+    def multivaluefield(fieldname)
+      multivalue = false
+      klass = self
+      until klass == Object do
+        multivalue ||= @@multivaluefields[klass].include?(fieldname)
+        klass = klass.superclass
+      end
+      multivalue
+    end
+    
+    def ldapfields
+      fields = Set.new
+      klass = self
+      until klass == Object do
+        fields += @@fieldtoldap[klass].keys
+        klass = klass.superclass
+      end
+      fields
+    end
+    
+    def fieldtoldap(fieldname)
+      klass = self
+      ldapfield = nil
+      until klass == Object do
+        ldapfield ||= @@fieldtoldap[klass][fieldname]
+        klass = klass.superclass
+      end
+      ldapfield
+    end
+    
+    def allldapclasses
+      klass = self
+      ldapclasses = ["Top"]
+      until klass == Object do
+        if ldapclass = @@classtoldapclass[klass]
+          ldapclasses.push ldapclass.to_s
+        end
+        klass = klass.superclass
+      end
+      ldapclasses
     end
   end
   
@@ -306,8 +381,8 @@ class Entry
       elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
         value.map! {|val| (val == 'TRUE')}
       end
-      fieldname = @@ldaptofield[self.class][fieldname] || @@ldaptofield[self.class.superclass][fieldname] || fieldname
-      if @@multivaluevariables[self.class].include?(fieldname) || @@multivaluevariables[self.class.superclass].include?(fieldname)
+      fieldname = self.class.ldaptofield(fieldname) || fieldname
+      if self.class.multivaluefield(fieldname)
         instance_variable_set "@#{fieldname}".to_sym, value
       else
         instance_variable_set "@#{fieldname}".to_sym, value[0]
@@ -319,8 +394,8 @@ class Entry
   def initialize(ldapentry: nil, **options)
     options.each do |fieldname, value|
       if value
-        fieldname = @@ldaptofield[self.class][fieldname] || @@ldaptofield[self.class.superclass][fieldname] || fieldname
-        if @@multivaluevariables[self.class].include?(fieldname) || @@multivaluevariables[self.class.superclass].include?(fieldname)
+        fieldname = self.class.ldaptofield(fieldname) || fieldname
+        if self.class.multivaluefield(fieldname)
           instance_variable_set "@#{fieldname}".to_sym, [value]
         else
           instance_variable_set "@#{fieldname}".to_sym, value
@@ -336,7 +411,7 @@ class Entry
     if ldapentry
       populatefromldap ldapentry
     elsif @user
-      if @@classtoldapclass[self.class] || @@classtoldapclass[self.class.superclass]
+      if self.class.classtoldapclass
         addtoldap
       end
     end
@@ -347,10 +422,6 @@ class Entry
 
   def to_s
     "#{@label} #{@fieldname} #{arg}"
-  end
-
-  def ldapfields
-    @@fieldtoldap[self.class].keys + @@fieldtoldap[self.class.superclass].keys
   end
 
   def rdn
@@ -373,7 +444,7 @@ class Entry
   
   def addtoldap
     (rdnfield, rdnvalue) = self.rdn
-    rdnfield = @@fieldtoldap[self.class][rdnfield] || @@fieldtoldap[self.class.superclass][rdnfield] || rdnfield
+    rdnfield = self.class.fieldtoldap(rdnfield) || rdnfield
     unless @noldapobject
       if rdnvalue.is_a? Symbol
         puts "#{rdnfield.inspect} in #{self.inspect} is an unresolved reference (#{rdnvalue.inspect})"
@@ -381,13 +452,10 @@ class Entry
         @dn = Net::LDAP::DN.new rdnfield.to_s, rdnvalue, basedn
         @user.objectfromdn[@dn] = self
         attrs = {}
-        attrs[:objectclass] = ["top", @@classtoldapclass[self.class].to_s]
+        attrs[:objectclass] = self.class.allldapclasses
         attrs[rdnfield] = rdnvalue
-        if ldapsuperclass = @@classtoldapclass[self.class.superclass]
-          attrs[:objectclass].push ldapsuperclass.to_s
-        end
-        ldapfields.each do |fieldname|
-          ldapfieldname = @@fieldtoldap[self.class][fieldname] || @@fieldtoldap[self.class.superclass][fieldname] || fieldname
+        self.class.ldapfields.each do |fieldname|
+          ldapfieldname = self.class.fieldtoldap(fieldname) || fieldname
           if value = instance_variable_get("@#{fieldname}".to_sym)
             if value.is_a? Array
               unless value == []
@@ -470,8 +538,8 @@ class Entry
   def addfields(**options)
     ops = []
     options.each do |fieldname, value|
-      fieldname = @@gedcomtofield[self.class][fieldname] || @@gedcomtofield[self.class.superclass][fieldname] || fieldname
-      if @@multivaluevariables[self.class].include?(fieldname) || @@multivaluevariables[self.class.superclass].include?(fieldname)
+      fieldname = self.class.gedcomtofield(fieldname) || fieldname
+      if self.class.multivaluefield(fieldname)
         if oldvalues = instance_variable_get("@#{fieldname}".to_sym)
           instance_variable_set "@#{fieldname}".to_sym, oldvalues + [value]
         else
@@ -480,7 +548,7 @@ class Entry
       else
         instance_variable_set "@#{fieldname}".to_sym, value
       end
-      if fieldname = (@@fieldtoldap[self.class][fieldname] || @@fieldtoldap[self.class.superclass][fieldname])
+      if fieldname = self.class.fieldtoldap(fieldname)
         (rdnfield, rdnvalue) = self.rdn
         if not(dn) and (rdnfield == fieldname)
           @dn = Net::LDAP::DN.new fieldname.to_s, value, basedn
@@ -511,8 +579,8 @@ class Entry
   def deletefields(**options)
     ops = []
     options.each do |fieldname, value|
-      fieldname = @@gedcomtofield[self.class][fieldname] || @@gedcomtofield[self.class.superclass][fieldname] || fieldname
-      if @@multivaluevariables[self.class].include?(fieldname) || @@multivaluevariables[self.class.superclass].include?(fieldname)
+      fieldname = self.class.gedcomtofield(fieldname) || fieldname
+      if self.class.multivaluefield(fieldname)
         if oldvalues = instance_variable_get("@#{fieldname}".to_sym)
           instance_variable_set "@#{fieldname}".to_sym, oldvalues.delete_if {|i| i == value}
         end
@@ -520,7 +588,7 @@ class Entry
         instance_variable_set "@#{fieldname}".to_sym, nil
       end
       if @user and @dn
-        if fieldname = (@@fieldtoldap[self.class][fieldname] || @@fieldtoldap[self.class.superclass][fieldname])
+        if fieldname = self.class.fieldtoldap(fieldname)
           syntax = @user.attributemetadata[fieldname][:syntax]
           if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
             if value.dn
@@ -545,8 +613,8 @@ class Entry
     ops = []
     options.each do |fieldname, valuepairs|
       valuepairs.each do |oldvalue, newvalue|
-        fieldname = @@gedcomtofield[self.class][fieldname] || @@gedcomtofield[self.class.superclass][fieldname] || fieldname
-        if @@multivaluevariables[self.class].include?(fieldname) || @@multivaluevariables[self.class.superclass].include?(fieldname)
+        fieldname = self.class.gedcomtofield(fieldname) || fieldname
+        if self.class.multivaluefield(fieldname)
           if oldvalues = instance_variable_get("@#{fieldname}".to_sym)
             instance_variable_set "@#{fieldname}".to_sym, oldvalues.delete_if {|i| i == oldvalue}
           end
@@ -554,7 +622,7 @@ class Entry
           instance_variable_set "@#{fieldname}".to_sym, nil
         end
         if @user and @dn
-          if fieldname = (@@fieldtoldap[self.class][fieldname] || @@fieldtoldap[self.class.superclass][fieldname])
+          if fieldname = self.class.fieldtoldap(fieldname)
             syntax = @user.attributemetadata[fieldname][:syntax]
             if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
               if newvalue.dn
@@ -782,9 +850,7 @@ class Event < Entry
   attr_ldap :individual, :individualdn
 
   def self.fieldnametoclass(fieldname)
-    if [:auth, :caus, :cont, :corp, :file, :form, :phon, :publ, :titl, :type, :vers].member? fieldname
-      StringArgument
-    elsif [:fams, :famc, :fam].member? fieldname
+    if [:fams, :famc, :fam].member? fieldname
       Family
     elsif fieldname == :date
       RoughDate
@@ -795,6 +861,22 @@ class Event < Entry
     end
   end
   
+  def to_s
+    if date
+      "#{@description} #{date} #{@place}"
+    else
+      "#{@description} ? #{@place}"
+    end
+  end
+
+  def rdn
+    @noldapobject = not(@description)
+    [:description, @description]
+  end
+end
+
+class IndividualEvent < Event
+
   def initialize(parent: nil, ldapentry: nil, **options)
     if ldapentry
       super(ldapentry: ldapentry, **options)
@@ -811,13 +893,9 @@ class Event < Entry
     end
   end
 
-  def rdn
-    @noldapobject = not(@description)
-    [:description, @description]
-  end
 end
 
-class Birth < Event
+class Birth < IndividualEvent
   ldap_class :gedcombirth
 
   def initialize(parent: nil, ldapentry: nil, **options)
@@ -829,7 +907,7 @@ class Birth < Event
   end
 end
 
-class Death < Event
+class Death < IndividualEvent
   ldap_class :gedcomdeath
   attr_gedcom :cause, :caus
   attr_ldap :cause, :cause
@@ -843,7 +921,7 @@ class Death < Event
   end
 end
 
-class Burial < Event
+class Burial < IndividualEvent
   ldap_class :gedcomburial
   attr_reader :individual
   attr_ldap :individual, :individualdn
@@ -857,9 +935,35 @@ class Burial < Event
   end
 end
 
-class Marriage < Event
-  ldap_class :gedcommarriage
+class CoupleEvent < Event
   attr_ldap :couple, :couple
+
+  def initialize(parent: nil, ldapentry: nil, **options)
+    @parents = []
+    if ldapentry
+      super(ldapentry: ldapentry, **options)
+    else
+      couple = []
+      if parent.husband
+        couple.push parent.husband
+      end
+      if parent.wife
+        couple.push parent.wife
+      end
+      super(couple: couple, description: "#{self.class} of #{couple.map {|i| i.fullname}.join(' and ')}", **options)
+      couple[1..999].each do |i|
+        i.makealias self
+      end
+    end
+  end
+
+  def basedn
+    @couple[0].dn
+  end
+end
+
+class Marriage < CoupleEvent
+  ldap_class :gedcommarriage
   attr_gedcom :officiator, :offi
   attr_ldap :officiator, :officiator
 
@@ -870,60 +974,13 @@ class Marriage < Event
       super
     end
   end
-  
-  def initialize(parent: nil, ldapentry: nil, **options)
-    @parents = []
-    if ldapentry
-      super(ldapentry: ldapentry, **options)
-    else
-      couple = []
-      if parent.husband
-        couple.push parent.husband
-      end
-      if parent.wife
-        couple.push parent.wife
-      end
-      super(couple: couple, description: "Marriage of #{couple.map {|i| i.fullname}.join(' and ')}", **options)
-      couple[1..999].each do |i|
-        i.makealias self
-      end
-    end
-  end
-
-  def basedn
-    @couple[0].dn
-  end
 end
 
-class Divorce < Event
+class Divorce < CoupleEvent
   ldap_class :gedcomdivorce
-  attr_ldap :couple, :couple
-
-  def initialize(parent: nil, ldapentry: nil, **options)
-    @parents = []
-    if ldapentry
-      super(ldapentry: ldapentry, **options)
-    else
-      couple = []
-      if parent.husband
-        couple.push parent.husband
-      end
-      if parent.wife
-        couple.push parent.wife
-      end
-      super(couple: couple, description: "Divorce of #{couple.map {|i| i.fullname}.join(' and ')}", **options)
-      couple[1..999].each do |i|
-        i.makealias self
-      end
-    end
-  end
-
-  def basedn
-    @couple[0].dn
-  end
 end
 
-class Adoption < Event
+class Adoption < IndividualEvent
   ldap_class :gedcomadoption
   attr_reader :parents
   attr_ldap :parents, :parentdns
@@ -969,10 +1026,8 @@ class Adoption < Event
   end
 end
 
-class Baptism < Event
+class Baptism < IndividualEvent
   ldap_class :gedcombaptism
-  attr_reader :individual
-  attr_ldap :individual, :individualdn
 
   def initialize(parent: nil, ldapentry: nil, **options)
     if ldapentry
@@ -1292,7 +1347,7 @@ class Source < Entry
   attr_reader :references
   attr_ldap :rawdata, :rawdata
 
-    def initialize(arg: nil, filename: nil, **options)
+  def initialize(arg: nil, filename: nil, **options)
     @authors = []
     if filename
       super(filename: filename, title: File.basename(filename), rawdata: (File.read filename), **options)
@@ -1573,7 +1628,7 @@ class ConflictingEntries < Task
     event = @baseevent.object
     while event
       puts "    #{event.to_s}"
-      event = @user.findobjects(@@classtoldapclass[event.class], event.dn)[0]
+      event = @user.findobjects(self.class.classtoldapclass, event.dn)[0]
     end
   end
   
