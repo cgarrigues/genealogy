@@ -272,6 +272,14 @@ class GedcomEntry
     @@ldapclasstoclass[ldapclass]
   end
 
+  def self.fieldnametoclass(fieldname)
+    if GedcomEntry.definedfieldnames.member? fieldname
+      Module.const_get ("Gedcom" + fieldname.to_s.capitalize)
+    else
+      GedcomEntry
+    end
+  end
+  
   def populatefromldap(ldapentry)
     ldapentry.each do |fieldname, value|
       syntax = @user.attributemetadata[fieldname][:syntax]
@@ -1291,11 +1299,8 @@ class GedcomSour < GedcomEntry
   end
   
   def makeentry(label, fieldname, arg, parent)
-    if GedcomEntry.definedfieldnames.member? fieldname
-      classname = Module.const_get ("Gedcom" + fieldname.to_s.capitalize)
-    else
-      classname = GedcomEntry
-    end
+    parentclass = parent ? parent.class : self.class
+    classname = parentclass.fieldnametoclass(fieldname)
     if matchdata = /^\@(?<ref>\w+)\@$/.match(arg)
       arg = matchdata[:ref].upcase.to_sym
       if @labels[arg]
