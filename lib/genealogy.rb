@@ -98,9 +98,9 @@ class User
   def classfromentry(entry)
     objectclasses = entry.objectclass.map {|klass| klass.downcase.to_sym}
     ldapclass = objectclasses.detect do |ldapclass|
-      GedcomEntry.getclassfromldapclass ldapclass
+      Entry.getclassfromldapclass ldapclass
     end
-    GedcomEntry.getclassfromldapclass ldapclass
+    Entry.getclassfromldapclass ldapclass
   end
 
   def getobjectfromdn(dn)
@@ -235,7 +235,7 @@ class LdapAlias
   end
 end
 
-class GedcomEntry
+class Entry
   attr_reader :fieldname
   attr_reader :label
   attr_reader :arg
@@ -273,12 +273,52 @@ class GedcomEntry
   end
 
   def self.fieldnametoclass(fieldname)
-    if [:corp, :caus, :auth, :publ, :phon, :vers, :form, :file].member? fieldname
-      GedcomString
-    elsif GedcomEntry.definedfieldnames.member? fieldname
-      Module.const_get ("Gedcom" + fieldname.to_s.capitalize)
+    if [:auth, :caus, :cont, :corp, :file, :form, :phon, :publ, :titl, :type, :vers].member? fieldname
+      StringArgument
+    elsif [:fams, :famc, :fam].member? fieldname
+      Family
+    elsif fieldname == :addr
+      Address
+    elsif fieldname == :adop
+      Adoption
+    elsif fieldname == :bapm
+      Baptism
+    elsif fieldname == :birt
+      Birth
+    elsif fieldname == :buri
+      Burial
+    elsif fieldname == :char
+      CharacterSet
+    elsif fieldname == :date
+      RoughDate
+    elsif fieldname == :deat
+      Death
+    elsif fieldname == :div
+      Divorce
+    elsif fieldname == :even
+      Event
+    elsif fieldname == :head
+      Head
+    elsif fieldname == :indi
+      Individual
+    elsif fieldname == :name
+      Name
+    elsif fieldname == :marr
+      Marriage
+    elsif fieldname == :note
+      Note
+    elsif fieldname == :offi
+      Officiator
+    elsif fieldname == :page
+      Page
+    elsif fieldname == :plac
+      Place
+    elsif fieldname == :sex
+      Gender
+    elsif fieldname == :sour
+      Source
     else
-      GedcomEntry
+      Entry
     end
   end
   
@@ -377,11 +417,11 @@ class GedcomEntry
           if value = instance_variable_get("@#{fieldname}".to_sym)
             if value.is_a? Array
               unless value == []
-                attrs[ldapfieldname] = value.map {|v| v.kind_of?(GedcomEntry) ? v.dn : v}
+                attrs[ldapfieldname] = value.map {|v| v.kind_of?(Entry) ? v.dn : v}
               end
             else
               unless value == ""
-                if value.kind_of? GedcomEntry
+                if value.kind_of? Entry
                   if value.dn
                     attrs[ldapfieldname] = value.dn.to_s
                   end
@@ -413,7 +453,7 @@ class GedcomEntry
           end
         end
         if dupcount == 1
-          GedcomConflictingEvents.new baseevent: dupbase.to_s, user: @user
+          ConflictingEntries.new baseevent: dupbase.to_s, user: @user
         end
       end
     end
@@ -561,13 +601,9 @@ class GedcomEntry
       @user.modifyattributes @dn, ops
     end
   end
-  
-  def self.definedfieldnames
-    ObjectSpace.each_object(Class).select { |klass| klass < self }.map {|i| "#{i.to_s[6,999].downcase}".to_sym}
-  end
 end
 
-class GedcomHead < GedcomEntry
+class Head < Entry
   attr_reader :source
   attr_reader :destination
   attr_reader :date
@@ -590,18 +626,7 @@ class GedcomHead < GedcomEntry
   end
 end
 
-class GedcomGedc < GedcomEntry
-  attr_reader :version
-  attr_reader :form
-end
-
-class GedcomSubm < GedcomEntry
-  attr_reader :name
-  attr_reader :address
-  attr_multi :name
-end
-
-class GedcomAddr < GedcomEntry
+class Address < Entry
   attr_reader :address
   attr_reader :phones
   attr_multi :phon
@@ -623,13 +648,13 @@ class GedcomAddr < GedcomEntry
   end
 end
 
-class GedcomString < GedcomEntry
+class StringArgument < Entry
   def initialize(fieldname: "", arg: "", parent: nil, **options)
     parent.addfields(fieldname => arg)
   end
 end
 
-class GedcomDate < GedcomEntry
+class RoughDate < Entry
   attr_reader :relative
   attr_reader :year
   attr_reader :month
@@ -700,7 +725,7 @@ class GedcomDate < GedcomEntry
   end
 end
 
-class GedcomPlac < GedcomEntry
+class Place < Entry
   ldap_class :locality
   attr_reader :name
   attr_ldap :name, :l
@@ -757,7 +782,7 @@ class GedcomPlac < GedcomEntry
   end
 end
 
-class GedcomEven < GedcomEntry
+class Event < Entry
   ldap_class :gedcomevent
   attr_reader :date
   attr_ldap :date, :gedcomdate
@@ -804,7 +829,7 @@ class GedcomEven < GedcomEntry
   end
 end
 
-class GedcomBirt < GedcomEven
+class Birth < Event
   ldap_class :gedcombirth
 
   def initialize(parent: nil, ldapentry: nil, **options)
@@ -816,7 +841,7 @@ class GedcomBirt < GedcomEven
   end
 end
 
-class GedcomDeat < GedcomEven
+class Death < Event
   ldap_class :gedcomdeath
   attr_gedcom :cause, :caus
   attr_ldap :cause, :cause
@@ -830,7 +855,7 @@ class GedcomDeat < GedcomEven
   end
 end
 
-class GedcomBuri < GedcomEven
+class Burial < Event
   ldap_class :gedcomburial
   attr_reader :individual
   attr_ldap :individual, :individualdn
@@ -844,7 +869,7 @@ class GedcomBuri < GedcomEven
   end
 end
 
-class GedcomMarr < GedcomEven
+class Marriage < Event
   ldap_class :gedcommarriage
   attr_ldap :couple, :couple
   attr_gedcom :officiator, :offi
@@ -874,7 +899,7 @@ class GedcomMarr < GedcomEven
   end
 end
 
-class GedcomDiv < GedcomEven
+class Divorce < Event
   ldap_class :gedcomdivorce
   attr_ldap :couple, :couple
 
@@ -902,7 +927,7 @@ class GedcomDiv < GedcomEven
   end
 end
 
-class GedcomAdop < GedcomEven
+class Adoption < Event
   ldap_class :gedcomadoption
   attr_reader :parents
   attr_ldap :parents, :parentdns
@@ -948,7 +973,7 @@ class GedcomAdop < GedcomEven
   end
 end
 
-class GedcomBapm < GedcomEven
+class Baptism < Event
   ldap_class :gedcombaptism
   attr_reader :individual
   attr_ldap :individual, :individualdn
@@ -962,7 +987,7 @@ class GedcomBapm < GedcomEven
   end
 end
 
-class GedcomIndi < GedcomEntry
+class Individual < Entry
   ldap_class :gedcomindividual
   attr_ldap :gender, :sex
   attr_gedcom :birth, :birt
@@ -1007,7 +1032,7 @@ class GedcomIndi < GedcomEntry
   end
 
   def birth
-    @birth or GedcomBirt.new parent: self, fieldname: :birt, user: @user
+    @birth or Birth.new parent: self, fieldname: :birt, user: @user
   end
   
   def addfields(**options)
@@ -1070,7 +1095,7 @@ class GedcomIndi < GedcomEntry
   end
 end
 
-class GedcomChar < GedcomEntry
+class CharacterSet < Entry
   
   def initialize(fieldname: nil, arg: "", parent: nil, **options)
     if arg == 'ANSEL'
@@ -1081,7 +1106,7 @@ class GedcomChar < GedcomEntry
   end
 end
 
-class GedcomOffi < GedcomEntry
+class Officiator < Entry
   def initialize(arg: "", parent: nil, **options)
     (@first, @last, @suffix) = arg.split(/\s*\/[\s,]*/)
     puts "#{arg} officiated at #{parent.inspect}"
@@ -1089,7 +1114,7 @@ class GedcomOffi < GedcomEntry
   end
 end
 
-class GedcomName < GedcomEntry
+class Name < Entry
   ldap_class :gedcomname
   attr_reader :first
   attr_ldap :first, :givenname
@@ -1206,7 +1231,7 @@ class GedcomName < GedcomEntry
   end
 end
 
-class GedcomSex < GedcomEntry
+class Gender < Entry
   def initialize(fieldname: nil, arg: "", parent: nil, **options)
     if /^m/i.match(arg)
       gender = :male
@@ -1223,10 +1248,7 @@ class GedcomSex < GedcomEntry
   end
 end
 
-class GedcomType < GedcomString
-end
-
-class GedcomSour < GedcomEntry
+class Source < Entry
   ldap_class :gedcomsource
   attr_reader :version
   attr_gedcom :version, :vers
@@ -1332,7 +1354,7 @@ class GedcomSour < GedcomEntry
   end
 end
 
-class GedcomNote < GedcomEntry
+class Note < Entry
   attr_reader :note
 
   def initialize(arg: "", **options)
@@ -1354,13 +1376,7 @@ class GedcomNote < GedcomEntry
   end
 end
 
-class GedcomTitl < GedcomString
-end
-
-class GedcomCont < GedcomString
-end
-
-class GedcomPage < GedcomEntry
+class Page < Entry
   ldap_class :sourcepage
   attr_reader :pageno
   attr_ldap :pageno, :description
@@ -1395,7 +1411,7 @@ class GedcomPage < GedcomEntry
   end
 end
 
-class GedcomFam < GedcomEntry
+class Family < Entry
   attr_reader :husband
   attr_gedcom :husband, :husb
   attr_reader :wife
@@ -1498,7 +1514,7 @@ class GedcomFam < GedcomEntry
   end
 end
 
-class GedcomTask < GedcomEntry
+class Task < Entry
   attr_ldap :uniqueidentifier, :uniqueidentifier
 
   @@counter = Time.new.to_i
@@ -1513,13 +1529,13 @@ class GedcomTask < GedcomEntry
   end
 end
 
-class GedcomConflictingEvents < GedcomTask
+class ConflictingEntries < Task
   ldap_class :conflictingevents
   attr_reader :baseevent
   attr_ldap :baseevent, :eventdn
 
   def describeinfull
-    puts "Conflicting records (#{@uniqueidentifier})"
+    puts "Conflicting entries (#{@uniqueidentifier})"
     event = @baseevent.object
     while event
       puts "    #{event.to_s}"
