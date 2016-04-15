@@ -199,7 +199,7 @@ attributetype ( 1.3.6.1.4.1.19106.1.1.25
         )
 
 attributetype ( 1.3.6.1.4.1.19106.1.1.26
-	NAME 'couple'
+	NAME 'coupleDNs'
 	DESC 'DNs married couple'
         EQUALITY distinguishedNameMatch
         SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
@@ -301,7 +301,6 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.11
 	NAME 'gedcomMarriage'
 	DESC 'a gedcom marriage'
 	AUXILIARY
-	MUST (couple)
 	MAY (officiator)
 	)
 
@@ -309,7 +308,6 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.12
 	NAME 'gedcomDivorce'
 	DESC 'a gedcom divorce'
 	AUXILIARY
-	MUST (couple)
 	)
 
 objectclass ( 1.3.6.1.4.1.19106.1.2.13
@@ -318,4 +316,18 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.13
 	STRUCTURAL
 	MUST (objectClass $ uniqueIdentifier )
 	MAY (eventDn)
+	)
+
+objectclass ( 1.3.6.1.4.1.19106.1.2.14
+	NAME 'gedcomIndividualEvent'
+	DESC 'a gedcom individual event'
+	AUXILIARY
+	MUST (objectClass $ individualDN)
+	)
+
+objectclass ( 1.3.6.1.4.1.19106.1.2.15
+	NAME 'gedcomCoupleEvent'
+	DESC 'a gedcom couple event'
+	AUXILIARY
+	MUST (objectClass $ coupleDNs)
 	)

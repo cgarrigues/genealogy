@@ -825,6 +825,7 @@ class Place < Entry
 end
 
 class Event < Entry
+  ldap_class :gedcomevent
   attr_reader :date
   attr_ldap :date, :gedcomdate
   attr_reader :year
@@ -873,7 +874,7 @@ class Event < Entry
 end
 
 class IndividualEvent < Event
-  ldap_class :gedcomevent
+  ldap_class :gedcomindividualevent
   attr_reader :individual
   attr_ldap :individual, :individualdn
 
@@ -936,7 +937,8 @@ class Burial < IndividualEvent
 end
 
 class CoupleEvent < Event
-  attr_ldap :couple, :couple
+  ldap_class :gedcomcoupleevent
+  attr_ldap :couple, :coupledns
 
   def initialize(parent: nil, ldapentry: nil, **options)
     @parents = []
@@ -1613,7 +1615,7 @@ class Task < Entry
   end
   
   def rdn
-    @@counter += @@counter
+    @@counter += 1
     [:uniqueidentifier, "#{@user.username}-#{@@counter}"]
   end
 end
