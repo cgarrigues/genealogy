@@ -1630,7 +1630,7 @@ class ConflictingEntries < Task
     event = @baseevent.object
     while event
       puts "    #{event.to_s}"
-      event = @user.findobjects(self.class.classtoldapclass, event.dn)[0]
+      event = @user.findobjects(event.class.classtoldapclass, event.dn)[0]
     end
   end
   
