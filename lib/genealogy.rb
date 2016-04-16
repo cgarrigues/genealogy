@@ -275,13 +275,13 @@ class Entry
     end
     
     def fieldnametoclass(fieldname)
-      if [:auth, :caus, :cont, :corp, :file, :form, :phon, :publ, :titl, :type, :vers].member? fieldname
+      if [:auth, :cause, :cont, :corp, :file, :form, :phon, :publ, :title, :description, :version].member? fieldname
         StringArgument
       elsif [:fams, :famc, :fam].member? fieldname
         Family
-      elsif fieldname == :addr
+      elsif fieldname == :address
         Address
-      elsif fieldname == :char
+      elsif fieldname == :charset
         CharacterSet
       elsif fieldname == :head
         Head
@@ -291,7 +291,7 @@ class Entry
         Note
       elsif fieldname == :page
         Page
-      elsif fieldname == :sour
+      elsif fieldname == :source
         Source
       else
         Entry
@@ -406,7 +406,7 @@ class Entry
       end
     end
     if @label
-      @source.labels[@label] = self
+      @source.label[@label] = self
       @source.references[@label].each do |ref|
         ref.parent.modifyfields(ref.fieldname => {ref => self})
       end
@@ -555,7 +555,6 @@ class Entry
     ops = []
     (rdnfield, rdnvalue) = self.rdn
     options.each do |fieldname, value|
-      fieldname = self.class.gedcomtofield(fieldname) || fieldname
       if self.class.multivaluefield(fieldname)
         if oldvalues = instance_variable_get("@#{fieldname}".to_sym)
           instance_variable_set "@#{fieldname}".to_sym, oldvalues + [value]
@@ -598,7 +597,6 @@ class Entry
   def deletefields(**options)
     ops = []
     options.each do |fieldname, value|
-      fieldname = self.class.gedcomtofield(fieldname) || fieldname
       if self.class.multivaluefield(fieldname)
         if oldvalues = instance_variable_get("@#{fieldname}".to_sym)
           instance_variable_set "@#{fieldname}".to_sym, oldvalues.delete_if {|i| i == value}
@@ -635,7 +633,6 @@ class Entry
     ops = []
     options.each do |fieldname, valuepairs|
       valuepairs.each do |oldvalue, newvalue|
-        fieldname = self.class.gedcomtofield(fieldname) || fieldname
         if self.class.multivaluefield(fieldname)
           if oldvalues = instance_variable_get("@#{fieldname}".to_sym)
             instance_variable_set "@#{fieldname}".to_sym, oldvalues.delete_if {|i| i == oldvalue}
@@ -671,6 +668,7 @@ class Entry
 end
 
 class Head < Entry
+  attr_gedcom :source, :sour
   attr_reader :source
   attr_reader :destination
   attr_reader :date
@@ -868,16 +866,16 @@ class Event < Entry
   attr_reader :description
   attr_gedcom :description, :type
   attr_ldap :description, :description
-  attr_reader :sources
-  attr_gedcom :sources, :sour
-  attr_ldap :sources, :sourcedns
+  attr_reader :source
+  attr_gedcom :source, :sour
+  attr_ldap :source, :sourcedns
 
   def self.fieldnametoclass(fieldname)
     if [:fams, :famc, :fam].member? fieldname
       Family
     elsif fieldname == :date
       RoughDate
-    elsif fieldname == :plac
+    elsif fieldname == :place
       Place
     else
       super
@@ -887,13 +885,13 @@ class Event < Entry
   def addfields(**options)
     unless @description
       if options[:date]
-        if options[:plac]
-          options[:type] = "#{options[:plac]} #{options[:date]}"
+        if options[:place]
+          options[:description] = "#{options[:place]} #{options[:date]}"
         else
-          options[:type] = options[:date]
+          options[:description] = options[:date]
         end
       elsif place
-        options[:type] = options[:plac]
+        options[:description] = options[:place]
       end
     end
     super(**options)
@@ -1010,7 +1008,7 @@ class Marriage < CoupleEvent
   attr_ldap :officiator, :officiator
 
   def self.fieldnametoclass(fieldname)
-    if fieldname == :offi
+    if fieldname == :officiator
       Officiator
     else
       super
@@ -1039,7 +1037,7 @@ class Adoption < IndividualEvent
   def addfields(**options)
     options.each do |fieldname, value|
       if fieldname == :famc
-        value.addfields(even: self)
+        value.addfields(events: self)
         if value.respond_to?(:husband) and value.husband
           @parents.push value.husband
         end
@@ -1083,9 +1081,12 @@ end
 class Individual < Entry
   ldap_class :gedcomindividual
   attr_ldap :gender, :sex
+  attr_gedcom :adoption, :adop
+  attr_gedcom :baptism, :bapm
   attr_gedcom :birth, :birt
   attr_ldap :birth, :birthdn
   attr_reader :baptism
+  attr_gedcom :burial, :buri
   attr_gedcom :death, :deat
   attr_ldap :death, :deathdn
   attr_accessor :mother
@@ -1096,10 +1097,10 @@ class Individual < Entry
   attr_multi :names
   attr_gedcom :names, :name
   attr_ldap :names, :namedns
-  attr_reader :sources
-  attr_gedcom :sources, :sour
-  attr_ldap :sources, :sourcedns
-  attr_multi :sources
+  attr_reader :source
+  attr_gedcom :source, :sour
+  attr_ldap :source, :sourcedns
+#  attr_multi :source
   attr_reader :fullname
   attr_ldap :fullname, :cn
   attr_ldap :first, :givenname
@@ -1107,23 +1108,23 @@ class Individual < Entry
   attr_ldap :suffix, :initials
 
   def self.fieldnametoclass(fieldname)
-    if [:auth, :caus, :cont, :corp, :file, :form, :phon, :publ, :titl, :type, :vers].member? fieldname
+    if [:auth, :cause, :cont, :corp, :file, :form, :phon, :publ, :title, :description, :version].member? fieldname
       StringArgument
     elsif [:fams, :famc, :fam].member? fieldname
       Family
-    elsif fieldname == :adop
+    elsif fieldname == :adoption
       Adoption
-    elsif fieldname == :bapm
+    elsif fieldname == :baptism
       Baptism
-    elsif fieldname == :birt
+    elsif fieldname == :birth
       Birth
-    elsif fieldname == :buri
+    elsif fieldname == :burial
       Burial
-    elsif fieldname == :deat
+    elsif fieldname == :death
       Death
-    elsif fieldname == :even
+    elsif fieldname == :events
       IndividualEvent
-    elsif fieldname == :name
+    elsif fieldname == :names
       Name
     elsif fieldname == :sex
       Gender
@@ -1151,13 +1152,13 @@ class Individual < Entry
   end
 
   def birth
-    @birth or Birth.new parent: self, fieldname: :birt, user: @user
+    @birth or Birth.new parent: self, fieldname: :birth, user: @user
   end
   
   def addfields(**options)
     newoptions = {}
     options.each do |fieldname, value|
-      if fieldname == :name
+      if fieldname == :names
         unless @fullname
           # If there are more than one name defined, populate with the first one; the others will be findable via the name objects
           if fullname = value.to_s
@@ -1177,7 +1178,7 @@ class Individual < Entry
         options.delete fieldname
       elsif fieldname == :bapm
         options.delete fieldname
-      elsif fieldname == :even
+      elsif fieldname == :events
         if value and not self == value.parent
           if value.dn
             makealias value
@@ -1187,12 +1188,12 @@ class Individual < Entry
         end
         options.delete fieldname
       elsif fieldname == :mother
-        value.addfields(even: self.birth)
+        value.addfields(events: self.birth)
       elsif fieldname == :father
-        value.addfields(even: self.birth)
-      elsif fieldname == :sour
+        value.addfields(events: self.birth)
+      elsif fieldname == :source
         @user.findobjects('gedcomEvent', @dn) do |event|
-          event.addfields(sour: value)
+          event.addfields(source: value)
         end
       end
     end
@@ -1204,9 +1205,9 @@ class Individual < Entry
 
   def deletefields(**options)
     options.each do |fieldname, value|
-      if fieldname == :sour
+      if fieldname == :source
         @user.findobjects('gedcomEvent', @dn) do |event|
-          event.delfields(sour: value)
+          event.delfields(source: value)
         end
       end
     end
@@ -1215,7 +1216,6 @@ class Individual < Entry
 end
 
 class CharacterSet < Entry
-  
   def initialize(fieldname: nil, arg: "", parent: nil, **options)
     if arg == 'ANSEL'
       parent.addfields(fieldname => ANSEL::Converter.new)
@@ -1385,9 +1385,10 @@ class Source < Entry
   attr_ldap :publ, :publication
   attr_reader :filename
   attr_reader :head
-  attr_reader :labels
+  attr_reader :label
   attr_reader :references
   attr_ldap :rawdata, :rawdata
+  attr_gedcom :source, :sour
 
   def initialize(arg: nil, filename: nil, **options)
     @authors = []
@@ -1419,13 +1420,14 @@ class Source < Entry
   
   def makeentry(label, fieldname, arg, parent)
     parentclass = parent ? parent.class : self.class
+    fieldname = parentclass.gedcomtofield(fieldname) || fieldname
     classname = parentclass.fieldnametoclass(fieldname)
     if matchdata = /^\@(?<ref>\w+)\@$/.match(arg)
       arg = matchdata[:ref].upcase.to_sym
-      if @labels[arg]
-        @labels[arg].parent = parent
-        parent.addfields(fieldname => @labels[arg])
-        obj = @labels[arg]
+      if @label[arg]
+        @label[arg].parent = parent
+        parent.addfields(fieldname => @label[arg])
+        obj = @label[arg]
       else
         obj = classname.new fieldname: fieldname, label: label, arg: arg, parent: parent, source: self, user: @user
         @references[arg].push obj
@@ -1438,7 +1440,7 @@ class Source < Entry
 
   def parsefile
     entrystack = []
-    @labels = {:root => self}
+    @label = {:root => self}
     @references = Hash.new { |hash, key| hash[key] = []}
     @rawdata.split("\n").each do |line|
       if @head
@@ -1505,7 +1507,7 @@ class Page < Entry
     if parent and parent.dn
       super(pageno: arg, source: parent, parent: parent, **options)
       #Change the source's parent to point to us instead of the source itself.
-      @source.parent.modifyfields(sour: {parent => self})
+      @source.parent.modifyfields(source: {parent => self})
     else
       super(arg: arg, **options)
     end
@@ -1538,13 +1540,15 @@ class Family < Entry
   attr_gedcom :events, :even
   attr_reader :children
   attr_gedcom :children, :chil
+  attr_gedcom :marriage, :marr
+  attr_gedcom :divorce, :div
   
   def self.fieldnametoclass(fieldname)
-    if fieldname == :div
+    if fieldname == :divorce
       Divorce
-    elsif fieldname == :even
+    elsif fieldname == :events
       CoupleEvent
-    elsif fieldname == :marr
+    elsif fieldname == :marriage
       Marriage
     else
       super
@@ -1573,13 +1577,13 @@ class Family < Entry
 
   def addfields(**options)
     options.each do |fieldname, value|
-      if fieldname == :husb
+      if fieldname == :husband
         @husband = value
         @children.each do |child|
           child.addfields(father: @husband)
         end
         @events.each do |event|
-          @husband.addfields(even: event)
+          @husband.addfields(events: event)
         end
         options.delete fieldname
       elsif fieldname == :wife
@@ -1588,10 +1592,10 @@ class Family < Entry
           child.addfields(mother: @wife)
         end
         @events.each do |event|
-          @wife.addfields(even: event)
+          @wife.addfields(events: event)
         end
         options.delete fieldname
-      elsif fieldname == :chil
+      elsif fieldname == :children
         @children.push value
         if @husband
           if value.father
@@ -1608,12 +1612,12 @@ class Family < Entry
           end
         end
         options.delete fieldname
-      elsif fieldname == :even
+      elsif fieldname == :events
         if @husband
-          @husband.addfields(even: value)
+          @husband.addfields(events: value)
         end
         if @wife
-          @wife.addfields(even: value)
+          @wife.addfields(events: value)
         end
       end
     end
@@ -1622,7 +1626,7 @@ class Family < Entry
 
   def deletefields(**options)
     options.each do |fieldname, value|
-      if fieldname == :even
+      if fieldname == :events
         if @husband
           @husband.deletefields(even: event)
         end
