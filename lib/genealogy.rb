@@ -816,7 +816,7 @@ class Place < Entry
   def to_s
     parts = []
     Net::LDAP::DN.new(dn).each_pair do |key, val|
-      if key == "description"
+      if key == "l"
         parts.push val
       end
     end
