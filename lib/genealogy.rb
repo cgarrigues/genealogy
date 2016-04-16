@@ -132,9 +132,9 @@ class User
     unless modified
       message = @ldap.get_operation_result.message
       if message =~ /Attribute or Value Exists/
-        #puts "Couldn't modify attributes #{ops} for #{dn}: #{message}"
+        # It's okay that this attribute is already here
       else
-        puts "Couldn't modify attributes #{ops} for #{dn}: #{message}"
+        raise "Couldn't modify attributes #{ops} for #{dn}: #{message}"
       end
     end
   end
@@ -511,7 +511,7 @@ class Entry
           end
         end
         if dupcount == 1
-          ConflictingEntries.new baseevent: dupbase.to_s, user: @user
+          ConflictingEntries.new baseentry: dupbase.to_s, user: @user
         end
       end
     end
@@ -590,7 +590,13 @@ class Entry
       end
     end
     unless ops == []
-      @user.modifyattributes @dn, ops
+      begin
+        @user.modifyattributes @dn, ops
+      rescue RuntimeError => e
+        options.each do |fieldname, value|
+          foo = FieldIsntMultiple.new parententry: self, fieldname: fieldname.to_s, newvalue: value, user: @user
+        end
+      end
     end
   end
   
@@ -1087,6 +1093,7 @@ class Individual < Entry
   attr_ldap :birth, :birthdn
   attr_reader :baptism
   attr_gedcom :burial, :buri
+  attr_accessor :death
   attr_gedcom :death, :deat
   attr_ldap :death, :deathdn
   attr_accessor :mother
@@ -1666,12 +1673,12 @@ end
 
 class ConflictingEntries < Task
   ldap_class :conflictingevents
-  attr_reader :baseevent
-  attr_ldap :baseevent, :eventdn
+  attr_reader :baseentry
+  attr_ldap :baseentry, :parententrydn
 
   def describeinfull
     puts "Conflicting entries (#{@uniqueidentifier})"
-    event = @baseevent.object
+    event = @baseentry.object
     while event
       puts "    #{event.to_s}"
       event = @user.findobjects(event.class.classtoldapclass, event.dn)[0]
@@ -1679,6 +1686,26 @@ class ConflictingEntries < Task
   end
   
   def to_s
-    "Conflict at #{@baseevent}"
+    "Conflict at #{@baseentry}"
   end
 end
+
+class FieldIsntMultiple < Task
+  ldap_class :fieldisntmultiple
+  attr_reader :parententry
+  attr_ldap :parententry, :parententrydn
+  attr_ldap :fieldname, :fieldname
+  attr_ldap :newvalue, :newentrydn
+
+  def describeinfull
+    puts "Trying to put another entry in a field (#{@uniqueidentifier})"
+    puts "    #{@fieldname.to_sym.inspect} in #{@parententry}"
+    puts "    first value: #{@parententry.send(@fieldname)}"
+    puts "    second value: #{@newvalue}"
+  end
+  
+  def to_s
+    "Two values for #{fieldname.inspect} in #{parententry.inspect}"
+  end
+end
+

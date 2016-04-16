@@ -214,7 +214,23 @@ attributetype ( 1.3.6.1.4.1.19106.1.1.27
         )
 
 attributetype ( 1.3.6.1.4.1.19106.1.1.28
-	NAME 'eventDN'
+	NAME 'newEntryDN'
+	DESC 'DN of new event'
+        EQUALITY distinguishedNameMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
+	SINGLE-VALUE
+        )
+	
+attributetype ( 1.3.6.1.4.1.19106.1.1.29
+	NAME 'fieldname'
+	DESC 'name of field'
+        EQUALITY caseIgnoreIA5Match
+        SUBSTR caseIgnoreIA5SubstringsMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+        )
+
+attributetype ( 1.3.6.1.4.1.19106.1.1.30
+	NAME 'parentEntryDN'
 	DESC 'DN of event'
         EQUALITY distinguishedNameMatch
         SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
@@ -315,7 +331,7 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.13
 	DESC 'tree of events that conflict'
 	STRUCTURAL
 	MUST (objectClass $ uniqueIdentifier )
-	MAY (eventDn)
+	MAY (parentEntryDN)
 	)
 
 objectclass ( 1.3.6.1.4.1.19106.1.2.14
@@ -330,4 +346,12 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.15
 	DESC 'a gedcom couple event'
 	AUXILIARY
 	MUST (objectClass $ coupleDNs)
+	)
+
+objectclass ( 1.3.6.1.4.1.19106.1.2.16
+	NAME 'FieldIsntMultiple'
+	DESC 'Multiple values being put in non-multiple field'
+	STRUCTURAL
+	MUST (objectClass $ uniqueIdentifier )
+	MAY (parentEntryDN $ fieldname $ newEntryDN )
 	)
