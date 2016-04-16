@@ -375,10 +375,13 @@ class Entry
     ldapentry.each do |fieldname, value|
       syntax = @user.attributemetadata[fieldname][:syntax]
       if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
+        # DN
         value.map! {|dn| LdapAlias.new dn, @user}
       elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
+        # Integer
         value.map! {|num| Integer(num)}
       elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
+        # Boolean
         value.map! {|val| (val == 'TRUE')}
       end
       fieldname = self.class.ldaptofield(fieldname) || fieldname
@@ -457,18 +460,31 @@ class Entry
         self.class.ldapfields.each do |fieldname|
           ldapfieldname = self.class.fieldtoldap(fieldname) || fieldname
           if value = instance_variable_get("@#{fieldname}".to_sym)
-            if value.is_a? Array
-              unless value == []
-                attrs[ldapfieldname] = value.map {|v| v.kind_of?(Entry) ? v.dn : v}
-              end
+            if value == ""
+              value = []
             else
-              unless value == ""
-                if value.kind_of? Entry
-                  if value.dn
-                    attrs[ldapfieldname] = value.dn.to_s
+              unless value.is_a? Array
+                value = [value]
+              end
+              unless value == []
+                syntax = @user.attributemetadata[ldapfieldname][:syntax]
+                attrs[ldapfieldname] = value.map do |value|
+                  if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
+                    # DN
+                    if value.is_a? String
+                      value
+                    else
+                      value.dn
+                    end
+                  elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
+                    # Integer
+                    value.to_s
+                  elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
+                    # Boolean
+                    value.to_s.upcase
+                  else
+                    value
                   end
-                else
-                  attrs[ldapfieldname] = value
                 end
               end
             end
@@ -490,7 +506,7 @@ class Entry
               dupcount += 1
               @dn = Net::LDAP::DN.new rdnfield.to_s, rdnvalue, @dn
             else
-              raise "Couldn't add #{self.inspect} at #{@dn.inspect} with attributes #{attrs.inspect}: #{message}"
+              raise "Couldn't add #{self.inspect} at #{@dn} with attributes #{attrs.inspect}: #{message}"
             end
           end
         end
@@ -523,7 +539,7 @@ class Entry
         end
       end
     else
-      puts "Can't add alias under #{dn.inspect} to #{dest.inspect} because the latter has no DN"
+      puts "Can't add alias under #{dn} to #{dest.inspect} because the latter has no DN"
     end
   end
 
@@ -537,6 +553,7 @@ class Entry
   
   def addfields(**options)
     ops = []
+    (rdnfield, rdnvalue) = self.rdn
     options.each do |fieldname, value|
       fieldname = self.class.gedcomtofield(fieldname) || fieldname
       if self.class.multivaluefield(fieldname)
@@ -549,7 +566,6 @@ class Entry
         instance_variable_set "@#{fieldname}".to_sym, value
       end
       if fieldname = self.class.fieldtoldap(fieldname)
-        (rdnfield, rdnvalue) = self.rdn
         if not(dn) and (rdnfield == fieldname)
           @dn = Net::LDAP::DN.new fieldname.to_s, value, basedn
           #puts "delayed addition of #{@dn} to ldap"
@@ -558,12 +574,15 @@ class Entry
         if not(@noldapobject) and @user and @dn
           syntax = @user.attributemetadata[fieldname][:syntax]
           if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
+            # DN
             if value.dn
               ops.push [:add, fieldname, value.dn]
             end
           elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
+            # Integer
             ops.push [:add, fieldname, value.to_s]
           elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
+            # Boolean
             ops.push [:add, fieldname, value.to_s.upcase]
           else
             ops.push [:add, fieldname, value]
@@ -591,12 +610,15 @@ class Entry
         if fieldname = self.class.fieldtoldap(fieldname)
           syntax = @user.attributemetadata[fieldname][:syntax]
           if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
+            # DN
             if value.dn
               ops.push [:delete, fieldname, value.dn]
             end
           elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
+            # Integer
             ops.push [:delete, fieldname, value.to_s]
           elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
+            # Boolean
             ops.push [:delete, fieldname, value.to_s.upcase]
           else
             ops.push [:delete, fieldname, value]
@@ -625,12 +647,15 @@ class Entry
           if fieldname = self.class.fieldtoldap(fieldname)
             syntax = @user.attributemetadata[fieldname][:syntax]
             if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
+              # DN
               if newvalue.dn
                 ops.push [:replace, fieldname, [oldvalue.dn, newvalue.dn]]
               end
             elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
+              # Integer
               ops.push [:delete, fieldname, [oldvalue.to_s, newvalue.to_s]]
             elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
+              # Boolean
               ops.push [:delete, fieldname, [oldvalue.to_s.upcase, newvalue.to_s.upcase]]
             else
               ops.push [:delete, fieldname, [oldvalue, newvalue]]
@@ -857,6 +882,21 @@ class Event < Entry
     else
       super
     end
+  end
+  
+  def addfields(**options)
+    unless @description
+      if options[:date]
+        if options[:plac]
+          options[:type] = "#{options[:plac]} #{options[:date]}"
+        else
+          options[:type] = options[:date]
+        end
+      elsif place
+        options[:type] = options[:plac]
+      end
+    end
+    super(**options)
   end
   
   def to_s
