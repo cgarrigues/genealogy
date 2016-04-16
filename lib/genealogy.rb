@@ -1605,18 +1605,10 @@ class Family < Entry
       elsif fieldname == :children
         @children.push value
         if @husband
-          if value.father
-            puts "Not adding #{@husband.inspect} as #{value.inspect}'s father because #{value.father.inspect} is already listed"
-          else
-            value.addfields(father: @husband)
-          end
+          value.addfields(father: @husband)
         end
         if @wife
-          if value.mother
-            puts "Not adding #{@wife.inspect} as #{self.inspect}'s mother because #{value.mother.inspect} is already listed"
-          else
-            value.addfields(mother: @wife)
-          end
+          value.addfields(mother: @wife)
         end
         options.delete fieldname
       elsif fieldname == :events
