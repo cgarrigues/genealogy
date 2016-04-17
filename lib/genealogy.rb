@@ -152,7 +152,7 @@ class User
           @objectfromdn[object.dn] = object
           yield object
         end
-        raise "Couldn't search #{@dn} for events: #{@ldap.get_operation_result.message}"
+        raise "Couldn't search #{base} for events: #{@ldap.get_operation_result.message}"
       end
     else
       objects = []
@@ -200,7 +200,7 @@ class User
   end
 
   def findtasks
-    findobjects("*", Net::LDAP::DN.new("ou", "Tasks", basedn)) {|task|
+    findobjects("*", Net::LDAP::DN.new("ou", "Tasks", basedn)).each {|task|
       task.describeinfull
     }
   end
