@@ -567,7 +567,7 @@ class Entry
     ops = []
     (rdnfield, rdnvalue) = self.rdn
     options.each do |fieldname, value|
-      setinstancevariable fieldname,value
+      setinstancevariable fieldname, value
       if fieldname = self.class.fieldtoldap(fieldname)
         if not(dn) and (rdnfield == fieldname)
           @dn = Net::LDAP::DN.new fieldname.to_s, value, basedn
@@ -900,8 +900,8 @@ class Event < Entry
         else
           options[:description] = options[:date]
         end
-      elsif place
-        options[:description] = options[:place]
+      elsif options[:place]
+        options[:description] = options[:place].to_s
       end
     end
     super(**options)
