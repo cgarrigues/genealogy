@@ -524,7 +524,7 @@ class Entry
       else
         (rdnfield, rdnvalue) = dest.rdn
       end
-      aliasdn = Net::LDAP::DN.new rdnfield.to_s, rdnvalue, self.dn
+      aliasdn = Net::LDAP::DN.new rdnfield.to_s, rdnvalue, dn
       attrs = {
         objectclass: ["alias", "extensibleObject"],
         aliasedobjectname: dest.dn.to_s,
@@ -550,24 +550,28 @@ class Entry
       "#<#{self.class}: #{to_s}>"
     end
   end
+
+  def setinstancevariable(fieldname, value)
+    if self.class.multivaluefield(fieldname)
+      if oldvalues = instance_variable_get("@#{fieldname}".to_sym)
+        instance_variable_set "@#{fieldname}".to_sym, oldvalues + [value]
+      else
+        instance_variable_set "@#{fieldname}".to_sym, [value]
+      end
+    else
+      instance_variable_set "@#{fieldname}".to_sym, value
+    end
+  end
   
   def addfields(**options)
     ops = []
     (rdnfield, rdnvalue) = self.rdn
     options.each do |fieldname, value|
-      if self.class.multivaluefield(fieldname)
-        if oldvalues = instance_variable_get("@#{fieldname}".to_sym)
-          instance_variable_set "@#{fieldname}".to_sym, oldvalues + [value]
-        else
-          instance_variable_set "@#{fieldname}".to_sym, [value]
-        end
-      else
-        instance_variable_set "@#{fieldname}".to_sym, value
-      end
+      setinstancevariable fieldname,value
       if fieldname = self.class.fieldtoldap(fieldname)
         if not(dn) and (rdnfield == fieldname)
           @dn = Net::LDAP::DN.new fieldname.to_s, value, basedn
-          #puts "delayed addition of #{@dn} to ldap"
+          #puts "Delayed addition of #{@dn} to ldap"
           self.addtoldap
         end
         if not(@noldapobject) and @user and @dn
