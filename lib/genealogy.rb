@@ -731,7 +731,6 @@ class RoughDate < Entry
   attr_reader :month
   attr_reader :day
   attr_reader :raw
-  attr_reader :events
 
   Monthmap = {
     NIL => 0,
@@ -802,6 +801,7 @@ class Place < Entry
   attr_ldap :name, :l
   attr_reader :places
   attr_reader :events
+  attr_gedcom :events, :even
 
   def initialize(ldapentry: nil, parent: nil, arg: "", user: nil, **options)
     if ldapentry
@@ -1086,9 +1086,10 @@ end
 
 class Individual < Entry
   ldap_class :gedcomindividual
-  attr_ldap :gender, :sex
+  attr_gedcom :gender, :sex
   attr_gedcom :adoption, :adop
   attr_gedcom :baptism, :bapm
+  attr_gedcom :events, :even
   attr_gedcom :birth, :birt
   attr_ldap :birth, :birthdn
   attr_reader :baptism
@@ -1133,7 +1134,7 @@ class Individual < Entry
       IndividualEvent
     elsif fieldname == :names
       Name
-    elsif fieldname == :sex
+    elsif fieldname == :gender
       Gender
     else
       super
