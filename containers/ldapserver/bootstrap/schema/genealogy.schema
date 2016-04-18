@@ -361,3 +361,11 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.2.2
 	MUST (objectClass $ uniqueIdentifier )
 	MAY (parentEntryDN $ fieldname $ newEntryDN )
 	)
+
+objectclass ( 1.3.6.1.4.1.19106.1.2.2.3
+	NAME 'ParseGedcomFile'
+	DESC 'Gedcomfile was loaded and needs to be parsed'
+	STRUCTURAL
+	MUST (objectClass $ uniqueIdentifier )
+	MAY (parentEntryDN $ fieldname $ newEntryDN )
+	)

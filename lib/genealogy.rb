@@ -598,7 +598,7 @@ class Entry
         @user.modifyattributes @dn, ops
       rescue RuntimeError => e
         options.each do |fieldname, value|
-          foo = ErrorAddingField.new parententry: self, fieldname: fieldname.to_s, newvalue: value, user: @user
+          ErrorAddingField.new parententry: self, fieldname: fieldname.to_s, newvalue: value, user: @user
         end
       end
     end
@@ -1408,6 +1408,7 @@ class Source < Entry
       super(filename: filename, title: File.basename(filename), rawdata: (File.read filename), **options)
       @user.makeou "Individuals", self.dn
       @user.makeou "Sources", self.dn
+      ParseGedcomFile.new gedcomsource: self, user: @user
     else
       super(title: arg, **options)
     end
@@ -1706,3 +1707,16 @@ class ErrorAddingField < Task
   end
 end
 
+class ParseGedcomFile < Task
+  ldap_class :parsegedcomfile
+  attr_ldap :gedcomsource, :parententrydn
+
+  def describeinfull
+    puts "Parse gedcom file (#{@uniqueidentifier})"
+    puts "    Filename is #{@gedcomsource.title}"
+  end
+
+  def to_s
+    "Parse gedcom file #{gedcomsource.title}"
+  end
+end
