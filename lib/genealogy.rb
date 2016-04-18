@@ -26,6 +26,16 @@ def listeventsbyplace(places: $places, depth: 0)
   end
 end
 
+class Array
+  def === (foo)
+    if length == foo.length
+      (0..length).all? {|i| self[i] === foo[i]}
+    else
+      false
+    end
+  end
+end
+
 class User
   attr_reader :ldap
   attr_reader :basedn
@@ -220,6 +230,12 @@ class LdapAlias
     @user = user
   end
 
+  def === (foo)
+    puts self.inspect
+    puts foo.inspect
+    dn === foo.dn
+  end
+  
   def object
     @user.objectfromdn[@dn]
   end
@@ -242,12 +258,6 @@ class LdapAlias
 end
 
 class Entry
-  attr_reader :fieldname
-  attr_reader :label
-  attr_reader :arg
-  attr_accessor :parent
-  attr_reader :baddata
-  attr_accessor :dn
 
   class << self
 
@@ -297,7 +307,7 @@ class Entry
         Note
       elsif fieldname == :page
         Page
-      elsif fieldname == :source
+      elsif fieldname == :sources
         Source
       else
         Entry
@@ -377,6 +387,14 @@ class Entry
     end
   end
   
+  attr_reader :fieldname
+  attr_reader :label
+  attr_reader :arg
+  attr_accessor :parent
+  attr_reader :baddata
+  attr_accessor :dn
+  attr_multi :sources
+
   def populatefromldap(ldapentry)
     ldapentry.each do |fieldname, value|
       syntax = @user.attributemetadata[fieldname][:syntax]
@@ -412,8 +430,8 @@ class Entry
       end
     end
     if @label
-      @source.label[@label] = self
-      @source.references[@label].each do |ref|
+      @sources[0].label[@label] = self
+      @sources[0].references[@label].each do |ref|
         ref.parent.modifyfields(ref.fieldname => {ref => self})
       end
     end
@@ -684,8 +702,8 @@ class Entry
 end
 
 class Head < Entry
-  attr_gedcom :source, :sour
-  attr_reader :source
+  attr_gedcom :sources, :sour
+  attr_reader :sources
   attr_reader :destination
   attr_reader :date
   attr_reader :subm
@@ -694,9 +712,13 @@ class Head < Entry
   attr_reader :charset
   attr_gedcom :charset, :char
 
-  def initialize(source: nil, **options)
-    if source
-      super(source: source, parent: source, **options)
+  def initialize(sources: nil, **options)
+    if sources
+      if sources.is_a? Array
+        super(sources: sources, parent: sources[0], **options)
+      else
+        super(sources: [sources], parent: sources, **options)
+      end
     else
       super(**options)
     end
@@ -882,8 +904,8 @@ class Event < Entry
   attr_reader :description
   attr_gedcom :description, :type
   attr_ldap :description, :description
-  attr_reader :source
-  attr_gedcom :source, :sour
+  attr_reader :sources
+  attr_gedcom :sources, :sour
   attr_ldap :source, :sourcedns
 
   def self.fieldnametoclass(fieldname)
@@ -1115,10 +1137,9 @@ class Individual < Entry
   attr_multi :names
   attr_gedcom :names, :name
   attr_ldap :names, :namedns
-  attr_reader :source
-  attr_gedcom :source, :sour
-  attr_ldap :source, :sourcedns
-#  attr_multi :source
+  attr_reader :sources
+  attr_gedcom :sources, :sour
+  attr_ldap :sources, :sourcedns
   attr_reader :fullname
   attr_ldap :fullname, :cn
   attr_ldap :first, :givenname
@@ -1152,7 +1173,7 @@ class Individual < Entry
   end
   
   def basedn
-    Net::LDAP::DN.new "ou", "Individuals", @source.dn
+    Net::LDAP::DN.new "ou", "Individuals", @sources[0].dn
   end
   
   def to_s
@@ -1209,9 +1230,9 @@ class Individual < Entry
         value.addfields(events: self.birth)
       elsif fieldname == :father
         value.addfields(events: self.birth)
-      elsif fieldname == :source
+      elsif fieldname == :sources
         @user.findobjects('gedcomEvent', @dn) do |event|
-          event.addfields(source: value)
+          event.addfields(sources: value)
         end
       end
     end
@@ -1223,9 +1244,9 @@ class Individual < Entry
 
   def deletefields(**options)
     options.each do |fieldname, value|
-      if fieldname == :source
+      if fieldname == :sources
         @user.findobjects('gedcomEvent', @dn) do |event|
-          event.delfields(source: value)
+          event.delfields(sources: value)
         end
       end
     end
@@ -1405,8 +1426,9 @@ class Source < Entry
   attr_reader :head
   attr_reader :label
   attr_reader :references
+  attr_ldap :references, :referencedns
   attr_ldap :rawdata, :rawdata
-  attr_gedcom :source, :sour
+  attr_gedcom :sources, :sour
 
   def initialize(arg: nil, filename: nil, **options)
     @authors = []
@@ -1421,7 +1443,11 @@ class Source < Entry
   end
 
   def basedn
-    Net::LDAP::DN.new "ou", "Sources", (@source || @user).dn
+    if @sources
+      Net::LDAP::DN.new "ou", "Sources", @sources[0].dn
+    else
+      Net::LDAP::DN.new "ou", "Sources", @user.dn
+    end
   end
   
   def rdn
@@ -1448,11 +1474,11 @@ class Source < Entry
         parent.addfields(fieldname => @label[arg])
         obj = @label[arg]
       else
-        obj = classname.new fieldname: fieldname, label: label, arg: arg, parent: parent, source: self, user: @user
+        obj = classname.new fieldname: fieldname, label: label, arg: arg, parent: parent, sources: self, user: @user
         @references[arg].push obj
       end
     else
-      obj = classname.new fieldname: fieldname, label: label, arg: arg, parent: parent, source: self, user: @user
+      obj = classname.new fieldname: fieldname, label: label, arg: arg, parent: parent, sources: self, user: @user
     end
     obj
   end
@@ -1520,21 +1546,47 @@ class Page < Entry
   ldap_class :sourcepage
   attr_reader :pageno
   attr_ldap :pageno, :description
-  attr_gedcom :source, :sour
-  
+  attr_gedcom :sources, :sour
+  attr_ldap :sources, :sourcedns
+  attr_reader :references
+  attr_multi :references
+  attr_ldap :references, :referencedns
+
+
   def initialize(arg: "", parent: nil, **options)
     if parent and parent.dn
-      super(pageno: arg, source: parent, parent: parent, **options)
+      super(pageno: arg, sources: parent, parent: parent, references: parent.parent, **options)
       #Change the source's parent to point to us instead of the source itself.
-      @source.parent.modifyfields(source: {parent => self})
+      @sources[0].parent.modifyfields(sources: {parent => self})
     else
       super(arg: arg, **options)
     end
   end
 
-  def source
-    if @source
-      @source
+  def === (foo)
+    if self == foo
+      true
+    elsif foo.is_a? Page
+      (@sources === foo.sources) and (@pageno === foo.pageno)
+    else
+      false
+    end
+  end
+
+  def mergeinto(foo)
+    puts "Merging #{dn} into #{foo.dn.inspect}"
+    references.each do |ref|
+      puts "    Fixing #{ref.dn}"
+      ref.modifyfields(sources: {self => foo})
+      foo.addfields(references: ref)
+    end
+    puts "    Deleting #{dn}"
+    @user.ldap.delete dn: dn
+  end
+  
+  def sources
+    if @sources
+      @sources
     else
       parentdn = Net::LDAP::DN.new *((Net::LDAP::DN.new dn).to_a[2..999])
       @user.objectfromdn[parentdn]
@@ -1547,7 +1599,7 @@ class Page < Entry
   end
 
   def to_s
-    "#{source} Page #{@pageno}"
+    "#{sources[0]} Page #{@pageno}"
   end
 end
 
@@ -1696,6 +1748,46 @@ class ConflictingEntries < Task
       event = @user.findobjects(event.class.classtoldapclass, event.dn)[0]
     end
   end
+
+  def getleafandinternalnodes(baseentry)
+    children = @user.findobjects(baseentry.class.classtoldapclass, baseentry.dn)
+    if children == []
+      return [[baseentry], []]
+    else
+      leaves = []
+      internal = [baseentry]
+      children.each do |child|
+        (leaf, childinternal) = getleafandinternalnodes child
+        leaves.push leaf
+        internal.push childinternal
+      end
+      leaves.flatten!
+      internal.flatten!
+      return [leaves, internal]
+    end
+  end
+
+  def runtask
+    (leaves, internal) = getleafandinternalnodes @baseentry.object
+    puts leaves.inspect
+    puts internal.inspect
+    if internal == []
+      puts "Seems to have already been done"
+      deletefromtasklist
+    else
+      leaves.each do |leaf|
+        internal.each do |internal|
+          if leaf === internal
+            leaf.mergeinto internal
+            deletefromtasklist
+          else
+            puts "#{leaf.inspect} does not match #{internal.inspect}"
+          end
+        end
+      end
+    end
+    raise "stop here"
+  end
   
   def to_s
     "Conflict at #{@baseentry}"
@@ -1731,8 +1823,8 @@ class ParseGedcomFile < Task
   end
 
   def runtask
-    @gedcomsource.parsefile
     deletefromtasklist
+    @gedcomsource.parsefile
   end
   
   def to_s
