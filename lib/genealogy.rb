@@ -598,7 +598,7 @@ class Entry
         @user.modifyattributes @dn, ops
       rescue RuntimeError => e
         options.each do |fieldname, value|
-          foo = FieldIsntMultiple.new parententry: self, fieldname: fieldname.to_s, newvalue: value, user: @user
+          foo = ErrorAddingField.new parententry: self, fieldname: fieldname.to_s, newvalue: value, user: @user
         end
       end
     end
@@ -1687,22 +1687,22 @@ class ConflictingEntries < Task
   end
 end
 
-class FieldIsntMultiple < Task
-  ldap_class :fieldisntmultiple
+class ErrorAddingField < Task
+  ldap_class :erroraddingfield
   attr_reader :parententry
   attr_ldap :parententry, :parententrydn
   attr_ldap :fieldname, :fieldname
   attr_ldap :newvalue, :newentrydn
 
   def describeinfull
-    puts "Trying to put another entry in a field (#{@uniqueidentifier})"
+    puts "Error adding field (#{@uniqueidentifier})"
     puts "    #{@fieldname.to_sym.inspect} in #{@parententry}"
     puts "    first value: #{@parententry.send(@fieldname)}"
     puts "    second value: #{@newvalue}"
   end
   
   def to_s
-    "Two values for #{fieldname.inspect} in #{parententry.inspect}"
+    "Error adding #{fieldname.inspect} in #{parententry.inspect}"
   end
 end
 
