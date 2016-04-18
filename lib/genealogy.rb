@@ -204,6 +204,12 @@ class User
       task.describeinfull
     }
   end
+
+  def runtasks
+    findobjects("*", Net::LDAP::DN.new("ou", "Tasks", basedn)).each {|task|
+      task.runtask
+    }
+  end
 end
 
 class LdapAlias
@@ -1667,6 +1673,14 @@ class Task < Entry
     @@counter += 1
     [:uniqueidentifier, "#{@user.username}-#{@@counter}"]
   end
+
+  def runtask
+    describeinfull
+  end
+
+  def deletefromtasklist
+    @user.ldap.delete :dn => @dn
+  end
 end
 
 class ConflictingEntries < Task
@@ -1716,6 +1730,11 @@ class ParseGedcomFile < Task
     puts "    Filename is #{@gedcomsource.title}"
   end
 
+  def runtask
+    @gedcomsource.parsefile
+    deletefromtasklist
+  end
+  
   def to_s
     "Parse gedcom file #{gedcomsource.title}"
   end
