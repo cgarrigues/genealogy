@@ -1590,6 +1590,7 @@ class Page < Entry
     end
     puts "    Deleting #{dn}"
     @user.ldap.delete dn: dn
+    @user.objectfromdn.delete dn
   end
   
   def source
@@ -1772,21 +1773,22 @@ class ConflictingEntries < Task
 
   def runtask
     (leaves, internal) = getleafandinternalnodes @baseentry.object
-    puts leaves.inspect
-    puts internal.inspect
-    if internal == []
-      puts "Seems to have already been done"
-      deletefromtasklist
-    else
-      leaves.each do |leaf|
-        internal.each do |internal|
+    while internal != []
+      puts leaves.inspect
+      puts internal.inspect
+      deleted = leaves.any? do |leaf|
+        internal.any? do |internal|
           if leaf === internal
             leaf.mergeinto internal
             deletefromtasklist
-          else
-            puts "#{leaf.inspect} does not match #{internal.inspect}"
+            true
           end
         end
+      end
+      if deleted
+        (leaves, internal) = getleafandinternalnodes @baseentry.object
+      else
+        raise "Nothing was deleted"
       end
     end
     raise "stop here"
