@@ -415,7 +415,7 @@ class Entry
         instance_variable_set "@#{fieldname}".to_sym, value[0]
       end
     end
-    @dn = ldapentry.dn
+    @dn = Net::LDAP::DN.new ldapentry.dn
   end
 
   def initialize(ldapentry: nil, **options)
@@ -566,7 +566,17 @@ class Entry
       puts "Can't add alias under #{dn} to #{dest.inspect} because the latter has no DN"
     end
   end
-
+ 
+  def renameandmoveto(newparent)
+    (rdnfield, rdnvalue) = rdn
+    newdn = Net::LDAP::DN.new rdnfield.to_s, getnewrdn
+    puts "Renaming #{self.dn}"
+    puts "      to #{newdn},#{newparent}"
+    unless @user.ldap.rename(olddn: self.dn, newrdn: newdn, delete_attributes: true, new_superior: newparent)
+      raise "Couldn't rename #{self.dn} to #{newdn},#{newparent}"
+    end
+  end
+  
   def inspect
     if @baddata
       "#<#{self.class}: #{to_s} :BAD>"
@@ -917,6 +927,21 @@ class Event < Entry
   attr_gedcom :sources, :sour
   attr_ldap :source, :sourcedns
 
+  def === (foo)
+    (@year === foo.year) && (@month === foo.month) && (@day === foo.day) && (@relativetodate === foo.relativetodate) && (@place === foo.place)
+  end
+  
+  def getnewrdn
+    "#{description} #{date} #{place}"
+  end
+  
+  def renameto(newdn, newparent)
+    if @sources
+      raise "Not fixing #{@sources.inspect}"
+    end
+    super
+  end
+
   def self.fieldnametoclass(fieldname)
     if [:fams, :famc, :fam].member? fieldname
       Family
@@ -971,6 +996,10 @@ class IndividualEvent < Event
     end
   end
 
+  def === (foo)
+    (@individual == foo.individual) && super
+  end
+  
   def to_s
     if date
       "#{@individual} #{@description} #{date} #{@place}"
@@ -1582,7 +1611,8 @@ class Page < Entry
   end
 
   def mergeinto(foo)
-    puts "Merging #{dn} into #{foo.dn.inspect}"
+    puts "Merging #{dn}"
+    puts "   into #{foo.dn}"
     references.each do |ref|
       puts "    Fixing #{ref.dn}"
       ref.modifyfields(sources: {self => foo})
@@ -1774,24 +1804,33 @@ class ConflictingEntries < Task
   def runtask
     (leaves, internal) = getleafandinternalnodes @baseentry.object
     while internal != []
-      puts leaves.inspect
-      puts internal.inspect
-      deleted = leaves.any? do |leaf|
+      done = leaves.any? do |leaf|
         internal.any? do |internal|
           if leaf === internal
             leaf.mergeinto internal
-            deletefromtasklist
             true
           end
         end
       end
-      if deleted
+      if done
         (leaves, internal) = getleafandinternalnodes @baseentry.object
       else
-        raise "Nothing was deleted"
+        leaves.each do |leaf|
+          leaf.renameandmoveto @baseentry.parent.dn
+          done = true
+        end
+        if done
+          (leaves, internal) = getleafandinternalnodes @baseentry.object
+          if internal == []
+            leaves.each do |leaf|
+              leaf.renameandmoveto @baseentry.parent.dn
+              done = true
+            end
+          end
+        end
       end
     end
-    raise "stop here"
+    deletefromtasklist
   end
   
   def to_s
