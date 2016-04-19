@@ -390,7 +390,7 @@ class Entry
   attr_reader :fieldname
   attr_reader :label
   attr_reader :arg
-  attr_accessor :parent
+  attr_accessor :superior
   attr_reader :baddata
   attr_accessor :dn
   attr_multi :sources
@@ -432,7 +432,7 @@ class Entry
     if @label
       @sources[0].label[@label] = self
       @sources[0].references[@label].each do |ref|
-        ref.parent.modifyfields(ref.fieldname => {ref => self})
+        ref.superior.modifyfields(ref.fieldname => {ref => self})
       end
     end
     if ldapentry
@@ -442,8 +442,8 @@ class Entry
         addtoldap
       end
     end
-    if @parent
-      @parent.addfields(fieldname => self)
+    if @superior
+      @superior.addfields(fieldname => self)
     end
   end
 
@@ -462,8 +462,8 @@ class Entry
   end
   
   def basedn
-    if @parent
-      @parent.dn
+    if @superior
+      @superior.dn
     else
       @user.dn
     end
@@ -567,13 +567,13 @@ class Entry
     end
   end
  
-  def renameandmoveto(newparent)
+  def renameandmoveto(newsuperior)
     (rdnfield, rdnvalue) = rdn
     newdn = Net::LDAP::DN.new rdnfield.to_s, getnewrdn
     puts "Renaming #{self.dn}"
-    puts "      to #{newdn},#{newparent}"
-    unless @user.ldap.rename(olddn: self.dn, newrdn: newdn, delete_attributes: true, new_superior: newparent)
-      raise "Couldn't rename #{self.dn} to #{newdn},#{newparent}"
+    puts "      to #{newdn},#{newsuperior}"
+    unless @user.ldap.rename(olddn: self.dn, newrdn: newdn, delete_attributes: true, new_superior: newsuperior)
+      raise "Couldn't rename #{self.dn} to #{newdn},#{newsuperior}"
     end
   end
   
@@ -632,7 +632,7 @@ class Entry
         @user.modifyattributes @dn, ops
       rescue RuntimeError => e
         options.each do |fieldname, value|
-          ErrorAddingField.new parententry: self, fieldname: fieldname.to_s, newvalue: value, user: @user
+          ErrorAddingField.new superiorentry: self, fieldname: fieldname.to_s, newvalue: value, user: @user
         end
       end
     end
@@ -710,12 +710,12 @@ class Entry
     end
   end
 
-  def parent
-    if @parent
-      @parent
+  def superior
+    if @superior
+      @superior
     else
-      parentdn = Net::LDAP::DN.new *((Net::LDAP::DN.new dn).to_a[2..999])
-      @user.objectfromdn[parentdn]
+      superiordn = Net::LDAP::DN.new *((Net::LDAP::DN.new dn).to_a[2..999])
+      @user.objectfromdn[superiordn]
     end
   end
 end
@@ -734,9 +734,9 @@ class Head < Entry
   def initialize(sources: nil, **options)
     if sources
       if sources.is_a? Array
-        super(sources: sources, parent: sources[0], **options)
+        super(sources: sources, superior: sources[0], **options)
       else
-        super(sources: [sources], parent: sources, **options)
+        super(sources: [sources], superior: sources, **options)
       end
     else
       super(**options)
@@ -744,7 +744,7 @@ class Head < Entry
   end
   
   def dn
-    @parent.dn
+    @superior.dn
   end
 end
 
@@ -771,8 +771,8 @@ class Address < Entry
 end
 
 class StringArgument < Entry
-  def initialize(fieldname: "", arg: "", parent: nil, **options)
-    parent.addfields(fieldname => arg)
+  def initialize(fieldname: "", arg: "", superior: nil, **options)
+    superior.addfields(fieldname => arg)
   end
 end
 
@@ -799,7 +799,7 @@ class RoughDate < Entry
     "DEC" => 12,
   }
   
-  def initialize(arg: "", parent: nil, **options)
+  def initialize(arg: "", superior: nil, **options)
     #puts "#{self.class} #{arg.inspect}"
     raw = arg
     args = arg.split(/\s+/)
@@ -837,7 +837,7 @@ class RoughDate < Entry
     day = args.pop
     day = Integer(day || 0)
     
-    parent.addfields(date: raw,
+    superior.addfields(date: raw,
                      year: year,
                      month: month,
                      day: day,
@@ -854,7 +854,7 @@ class Place < Entry
   attr_reader :events
   attr_gedcom :events, :even
 
-  def initialize(ldapentry: nil, parent: nil, arg: "", user: nil, **options)
+  def initialize(ldapentry: nil, superior: nil, arg: "", user: nil, **options)
     if ldapentry
       super(ldapentry: ldapentry, user: user)
     else
@@ -862,8 +862,8 @@ class Place < Entry
       args = arg.split /\s*,\s*/
       dn = Net::LDAP::DN.new *(args.map {|i| ["l", i]}.flatten), basedn
       name = args[0]
-      super(name: name, dn: dn, individual: parent, parent: parent, **options)
-      makealias parent
+      super(name: name, dn: dn, individual: superior, superior: superior, **options)
+      makealias superior
     end
   end
 
@@ -935,7 +935,7 @@ class Event < Entry
     "#{description} #{date} #{place}".rstrip
   end
   
-  def renameto(newdn, newparent)
+  def renameto(newdn, newsuperior)
     if @sources
       raise "Not fixing #{@sources.inspect}"
     end
@@ -988,11 +988,11 @@ class IndividualEvent < Event
   attr_reader :individual
   attr_ldap :individual, :individualdn
 
-  def initialize(parent: nil, ldapentry: nil, **options)
+  def initialize(superior: nil, ldapentry: nil, **options)
     if ldapentry
       super(ldapentry: ldapentry, **options)
     else
-      super(individual: parent, parent: parent, **options)
+      super(individual: superior, superior: superior, **options)
     end
   end
 
@@ -1013,11 +1013,11 @@ end
 class Birth < IndividualEvent
   ldap_class :gedcombirth
 
-  def initialize(parent: nil, ldapentry: nil, **options)
+  def initialize(superior: nil, ldapentry: nil, **options)
     if ldapentry
       super(ldapentry: ldapentry, **options)
     else
-      super(individual: parent, parent: parent, description: "Birth of #{parent.fullname}", **options)
+      super(individual: superior, superior: superior, description: "Birth of #{superior.fullname}", **options)
     end
   end
 end
@@ -1027,11 +1027,11 @@ class Death < IndividualEvent
   attr_gedcom :cause, :caus
   attr_ldap :cause, :cause
 
-  def initialize(parent: nil, ldapentry: nil, **options)
+  def initialize(superior: nil, ldapentry: nil, **options)
     if ldapentry
       super(ldapentry: ldapentry, **options)
     else
-      super(individual: parent, parent: parent, description: "Death of #{parent.fullname}", **options)
+      super(individual: superior, superior: superior, description: "Death of #{superior.fullname}", **options)
     end
   end
 end
@@ -1041,11 +1041,11 @@ class Burial < IndividualEvent
   attr_reader :individual
   attr_ldap :individual, :individualdn
 
-  def initialize(parent: nil, ldapentry: nil, **options)
+  def initialize(superior: nil, ldapentry: nil, **options)
     if ldapentry
       super(ldapentry: ldapentry, **options)
     else
-      super(individual: parent, parent: parent, description: "Burial of #{parent.fullname}", **options)
+      super(individual: superior, superior: superior, description: "Burial of #{superior.fullname}", **options)
     end
   end
 end
@@ -1054,17 +1054,17 @@ class CoupleEvent < Event
   ldap_class :gedcomcoupleevent
   attr_ldap :couple, :coupledns
 
-  def initialize(parent: nil, ldapentry: nil, **options)
-    @parents = []
+  def initialize(superior: nil, ldapentry: nil, **options)
+    @superiors = []
     if ldapentry
       super(ldapentry: ldapentry, **options)
     else
       couple = []
-      if parent.husband
-        couple.push parent.husband
+      if superior.husband
+        couple.push superior.husband
       end
-      if parent.wife
-        couple.push parent.wife
+      if superior.wife
+        couple.push superior.wife
       end
       super(couple: couple, description: "#{self.class} of #{couple.map {|i| i.fullname}.join(' and ')}", **options)
       couple[1..999].each do |i|
@@ -1098,15 +1098,15 @@ end
 
 class Adoption < IndividualEvent
   ldap_class :gedcomadoption
-  attr_reader :parents
-  attr_ldap :parents, :parentdns
+  attr_reader :superiors
+  attr_ldap :superiors, :superiordns
 
-  def initialize(parent: nil, ldapentry: nil, **options)
-    @parents = []
+  def initialize(superior: nil, ldapentry: nil, **options)
+    @superiors = []
     if ldapentry
       super(ldapentry: ldapentry, **options)
     else
-      super(individual: parent, parent: parent, description: "Adoption of #{parent.fullname}", **options)
+      super(individual: superior, superior: superior, description: "Adoption of #{superior.fullname}", **options)
     end
   end
 
@@ -1115,10 +1115,10 @@ class Adoption < IndividualEvent
       if fieldname == :famc
         value.addfields(events: self)
         if value.respond_to?(:husband) and value.husband
-          @parents.push value.husband
+          @superiors.push value.husband
         end
         if value.respond_to?(:wife) and value.wife
-          @parents.push value.wife
+          @superiors.push value.wife
         end
         options.delete fieldname
       end
@@ -1131,10 +1131,10 @@ class Adoption < IndividualEvent
       if fieldname == :famc
         value.deletefields(even: self)
         if value.husband
-          @parents.delete_if {|i| i == value.husband}
+          @superiors.delete_if {|i| i == value.husband}
         end
         if value.wife
-          @parents.delete_if {|i| i == value.wife}
+          @superiors.delete_if {|i| i == value.wife}
         end
       end
     end
@@ -1145,11 +1145,11 @@ end
 class Baptism < IndividualEvent
   ldap_class :gedcombaptism
 
-  def initialize(parent: nil, ldapentry: nil, **options)
+  def initialize(superior: nil, ldapentry: nil, **options)
     if ldapentry
       super(ldapentry: ldapentry, **options)
     else
-      super(individual: parent, parent: parent, description: "Baptism of #{parent.fullname}", **options)
+      super(individual: superior, superior: superior, description: "Baptism of #{superior.fullname}", **options)
     end
   end
 end
@@ -1229,7 +1229,7 @@ class Individual < Entry
   end
 
   def birth
-    @birth or Birth.new parent: self, fieldname: :birth, user: @user
+    @birth or Birth.new superior: self, fieldname: :birth, user: @user
   end
   
   def addfields(**options)
@@ -1256,7 +1256,7 @@ class Individual < Entry
       elsif fieldname == :bapm
         options.delete fieldname
       elsif fieldname == :events
-        if value and not self == value.parent
+        if value and not self == value.superior
           if value.dn
             makealias value
           else
@@ -1293,9 +1293,9 @@ class Individual < Entry
 end
 
 class CharacterSet < Entry
-  def initialize(fieldname: nil, arg: "", parent: nil, **options)
+  def initialize(fieldname: nil, arg: "", superior: nil, **options)
     if arg == 'ANSEL'
-      parent.addfields(fieldname => ANSEL::Converter.new)
+      superior.addfields(fieldname => ANSEL::Converter.new)
     else
       raise "Don't know what to do with #{arg} encoding"
     end
@@ -1303,10 +1303,10 @@ class CharacterSet < Entry
 end
 
 class Officiator < Entry
-  def initialize(arg: "", parent: nil, **options)
+  def initialize(arg: "", superior: nil, **options)
     (@first, @last, @suffix) = arg.split(/\s*\/[\s,]*/)
-    puts "#{arg} officiated at #{parent.inspect}"
-#    parent.addfields(fieldname, $names[@last][@first][@suffix]])
+    puts "#{arg} officiated at #{superior.inspect}"
+#    superior.addfields(fieldname, $names[@last][@first][@suffix]])
   end
 end
 
@@ -1413,7 +1413,7 @@ class Name < Entry
         end
       end
       @dn = dn
-      makealias parent, parent.label.to_s
+      makealias superior, superior.label.to_s
       @user.objectfromdn[dn] = self
     end
   end
@@ -1428,7 +1428,7 @@ class Name < Entry
 end
 
 class Gender < Entry
-  def initialize(fieldname: nil, arg: "", parent: nil, **options)
+  def initialize(fieldname: nil, arg: "", superior: nil, **options)
     if /^m/i.match(arg)
       gender = :male
     elsif /^f/i.match(arg)
@@ -1436,7 +1436,7 @@ class Gender < Entry
     else
       gender = arg
     end
-    parent.addfields(fieldname => gender)
+    superior.addfields(fieldname => gender)
   end
   
   def to_s
@@ -1501,22 +1501,22 @@ class Source < Entry
     @head = head
   end
   
-  def makeentry(label, fieldname, arg, parent)
-    parentclass = parent ? parent.class : self.class
-    fieldname = parentclass.gedcomtofield(fieldname) || fieldname
-    classname = parentclass.fieldnametoclass(fieldname)
+  def makeentry(label, fieldname, arg, superior)
+    superiorclass = superior ? superior.class : self.class
+    fieldname = superiorclass.gedcomtofield(fieldname) || fieldname
+    classname = superiorclass.fieldnametoclass(fieldname)
     if matchdata = /^\@(?<ref>\w+)\@$/.match(arg)
       arg = matchdata[:ref].upcase.to_sym
       if @label[arg]
-        @label[arg].parent = parent
-        parent.addfields(fieldname => @label[arg])
+        @label[arg].superior = superior
+        superior.addfields(fieldname => @label[arg])
         obj = @label[arg]
       else
-        obj = classname.new fieldname: fieldname, label: label, arg: arg, parent: parent, sources: self, user: @user
+        obj = classname.new fieldname: fieldname, label: label, arg: arg, superior: superior, sources: self, user: @user
         @references[arg].push obj
       end
     else
-      obj = classname.new fieldname: fieldname, label: label, arg: arg, parent: parent, sources: self, user: @user
+      obj = classname.new fieldname: fieldname, label: label, arg: arg, superior: superior, sources: self, user: @user
     end
     obj
   end
@@ -1544,12 +1544,12 @@ class Source < Entry
         end
       end
       if depth > 0
-        parent = entrystack[depth-1]
+        superior = entrystack[depth-1]
       else
-        parent = nil
+        superior = nil
       end
       arg = matchdata[:arg] || ""
-      entrystack[depth] = makeentry label, fieldname, arg, parent
+      entrystack[depth] = makeentry label, fieldname, arg, superior
     end
   end
   
@@ -1589,11 +1589,11 @@ class Page < Entry
   attr_ldap :references, :referencedns
 
 
-  def initialize(arg: "", parent: nil, **options)
-    if parent and parent.dn
-      super(pageno: arg, sources: parent, parent: parent, references: parent.parent, **options)
-      #Change the source's parent to point to us instead of the source itself.
-      @sources[0].parent.modifyfields(sources: {parent => self})
+  def initialize(arg: "", superior: nil, **options)
+    if superior and superior.dn
+      super(pageno: arg, sources: superior, superior: superior, references: superior.superior, **options)
+      #Change the source's superior to point to us instead of the source itself.
+      @sources[0].superior.modifyfields(sources: {superior => self})
     else
       super(arg: arg, **options)
     end
@@ -1624,7 +1624,7 @@ class Page < Entry
   end
   
   def source
-    parent
+    superior
   end
   
   def rdn
@@ -1772,7 +1772,7 @@ end
 class ConflictingEntries < Task
   ldap_class :conflictingevents
   attr_reader :baseentry
-  attr_ldap :baseentry, :parententrydn
+  attr_ldap :baseentry, :superiorentrydn
 
   def describeinfull
     puts "Conflicting entries (#{@uniqueidentifier})"
@@ -1816,14 +1816,14 @@ class ConflictingEntries < Task
         (leaves, internal) = getleafandinternalnodes @baseentry.object
       else
         leaves.each do |leaf|
-          leaf.renameandmoveto @baseentry.parent.dn
+          leaf.renameandmoveto @baseentry.superior.dn
           done = true
         end
         if done
           (leaves, internal) = getleafandinternalnodes @baseentry.object
           if internal == []
             leaves.each do |leaf|
-              leaf.renameandmoveto @baseentry.parent.dn
+              leaf.renameandmoveto @baseentry.superior.dn
               done = true
             end
           end
@@ -1840,26 +1840,26 @@ end
 
 class ErrorAddingField < Task
   ldap_class :erroraddingfield
-  attr_reader :parententry
-  attr_ldap :parententry, :parententrydn
+  attr_reader :superiorentry
+  attr_ldap :superiorentry, :superiorentrydn
   attr_ldap :fieldname, :fieldname
   attr_ldap :newvalue, :newentrydn
 
   def describeinfull
     puts "Error adding field (#{@uniqueidentifier})"
-    puts "    #{@fieldname.to_sym.inspect} in #{@parententry}"
-    puts "    first value: #{@parententry.send(@fieldname)}"
+    puts "    #{@fieldname.to_sym.inspect} in #{@superiorentry}"
+    puts "    first value: #{@superiorentry.send(@fieldname)}"
     puts "    second value: #{@newvalue}"
   end
   
   def to_s
-    "Error adding #{fieldname.inspect} in #{parententry.inspect}"
+    "Error adding #{fieldname.inspect} in #{superiorentry.inspect}"
   end
 end
 
 class ParseGedcomFile < Task
   ldap_class :parsegedcomfile
-  attr_ldap :gedcomsource, :parententrydn
+  attr_ldap :gedcomsource, :superiorentrydn
 
   def describeinfull
     puts "Parse gedcom file (#{@uniqueidentifier})"
