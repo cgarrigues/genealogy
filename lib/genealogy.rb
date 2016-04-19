@@ -985,21 +985,11 @@ end
 
 class IndividualEvent < Event
   ldap_class :gedcomindividualevent
-  attr_reader :individual
-  attr_ldap :individual, :individualdn
 
-  def initialize(superior: nil, ldapentry: nil, **options)
-    if ldapentry
-      super(ldapentry: ldapentry, **options)
-    else
-      super(individual: superior, superior: superior, **options)
-    end
+  def individual
+    parent
   end
 
-  def === (foo)
-    (@individual == foo.individual) && super
-  end
-  
   def to_s
     if date
       "#{@individual} #{@description} #{date} #{@place}"
@@ -1017,7 +1007,7 @@ class Birth < IndividualEvent
     if ldapentry
       super(ldapentry: ldapentry, **options)
     else
-      super(individual: superior, superior: superior, description: "Birth of #{superior.fullname}", **options)
+      super(superior: superior, description: "Birth of #{superior.fullname}", **options)
     end
   end
 end
@@ -1031,21 +1021,19 @@ class Death < IndividualEvent
     if ldapentry
       super(ldapentry: ldapentry, **options)
     else
-      super(individual: superior, superior: superior, description: "Death of #{superior.fullname}", **options)
+      super(superior: superior, description: "Death of #{superior.fullname}", **options)
     end
   end
 end
 
 class Burial < IndividualEvent
   ldap_class :gedcomburial
-  attr_reader :individual
-  attr_ldap :individual, :individualdn
 
   def initialize(superior: nil, ldapentry: nil, **options)
     if ldapentry
       super(ldapentry: ldapentry, **options)
     else
-      super(individual: superior, superior: superior, description: "Burial of #{superior.fullname}", **options)
+      super(superior: superior, description: "Burial of #{superior.fullname}", **options)
     end
   end
 end
@@ -1106,7 +1094,7 @@ class Adoption < IndividualEvent
     if ldapentry
       super(ldapentry: ldapentry, **options)
     else
-      super(individual: superior, superior: superior, description: "Adoption of #{superior.fullname}", **options)
+      super(superior: superior, description: "Adoption of #{superior.fullname}", **options)
     end
   end
 
@@ -1149,7 +1137,7 @@ class Baptism < IndividualEvent
     if ldapentry
       super(ldapentry: ldapentry, **options)
     else
-      super(individual: superior, superior: superior, description: "Baptism of #{superior.fullname}", **options)
+      super(superior: superior, description: "Baptism of #{superior.fullname}", **options)
     end
   end
 end
