@@ -1086,11 +1086,11 @@ end
 
 class Adoption < IndividualEvent
   ldap_class :gedcomadoption
-  attr_reader :superiors
-  attr_ldap :superiors, :superiordns
+  attr_reader :parents
+  attr_ldap :parents, :parentdns
 
   def initialize(superior: nil, ldapentry: nil, **options)
-    @superiors = []
+    @parents = []
     if ldapentry
       super(ldapentry: ldapentry, **options)
     else
@@ -1103,10 +1103,10 @@ class Adoption < IndividualEvent
       if fieldname == :famc
         value.addfields(events: self)
         if value.respond_to?(:husband) and value.husband
-          @superiors.push value.husband
+          @parents.push value.husband
         end
         if value.respond_to?(:wife) and value.wife
-          @superiors.push value.wife
+          @parents.push value.wife
         end
         options.delete fieldname
       end
@@ -1119,10 +1119,10 @@ class Adoption < IndividualEvent
       if fieldname == :famc
         value.deletefields(even: self)
         if value.husband
-          @superiors.delete_if {|i| i == value.husband}
+          @parents.delete_if {|i| i == value.husband}
         end
         if value.wife
-          @superiors.delete_if {|i| i == value.wife}
+          @parents.delete_if {|i| i == value.wife}
         end
       end
     end

@@ -178,8 +178,8 @@ attributetype ( 1.3.6.1.4.1.19106.1.1.23
 	)
 
 attributetype ( 1.3.6.1.4.1.19106.1.1.24
-	NAME 'superiorDNs'
-	DESC 'DNs of adoptive superiors'
+	NAME 'parentDNs'
+	DESC 'DNs of adoptive parents'
         EQUALITY distinguishedNameMatch
         SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
         )
@@ -301,7 +301,7 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.1.9
 	NAME 'gedcomAdoption'
 	DESC 'a gedcom adoption'
 	AUXILIARY
-	MAY (superiorDNs)
+	MAY (parentDNs)
 	)
 
 objectclass ( 1.3.6.1.4.1.19106.1.2.1.10
