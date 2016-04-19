@@ -932,7 +932,7 @@ class Event < Entry
   end
   
   def getnewrdn
-    "#{description} #{date} #{place}"
+    "#{description} #{date} #{place}".rstrip
   end
   
   def renameto(newdn, newparent)
