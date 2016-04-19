@@ -699,6 +699,15 @@ class Entry
       @user.modifyattributes @dn, ops
     end
   end
+
+  def parent
+    if @parent
+      @parent
+    else
+      parentdn = Net::LDAP::DN.new *((Net::LDAP::DN.new dn).to_a[2..999])
+      @user.objectfromdn[parentdn]
+    end
+  end
 end
 
 class Head < Entry
@@ -1546,8 +1555,6 @@ class Page < Entry
   ldap_class :sourcepage
   attr_reader :pageno
   attr_ldap :pageno, :description
-  attr_gedcom :sources, :sour
-  attr_ldap :sources, :sourcedns
   attr_reader :references
   attr_multi :references
   attr_ldap :references, :referencedns
@@ -1567,7 +1574,8 @@ class Page < Entry
     if self == foo
       true
     elsif foo.is_a? Page
-      (@sources === foo.sources) and (@pageno === foo.pageno)
+      #(@sources === foo.sources) and (@pageno === foo.pageno)
+      @pageno === foo.pageno
     else
       false
     end
@@ -1584,13 +1592,8 @@ class Page < Entry
     @user.ldap.delete dn: dn
   end
   
-  def sources
-    if @sources
-      @sources
-    else
-      parentdn = Net::LDAP::DN.new *((Net::LDAP::DN.new dn).to_a[2..999])
-      @user.objectfromdn[parentdn]
-    end
+  def source
+    parent
   end
   
   def rdn
@@ -1599,7 +1602,7 @@ class Page < Entry
   end
 
   def to_s
-    "#{sources[0]} Page #{@pageno}"
+    "#{source} Page #{@pageno}"
   end
 end
 
