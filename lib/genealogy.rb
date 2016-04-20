@@ -231,8 +231,6 @@ class LdapAlias
   end
 
   def === (foo)
-    puts self.inspect
-    puts foo.inspect
     dn === foo.dn
   end
   
@@ -395,12 +393,16 @@ class Entry
   attr_accessor :dn
   attr_multi :sources
 
+  def === (foo)
+    dn === foo.dn
+  end
+  
   def populatefromldap(ldapentry)
     ldapentry.each do |fieldname, value|
       syntax = @user.attributemetadata[fieldname][:syntax]
       if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
         # DN
-        value.map! {|dn| LdapAlias.new dn, @user}
+        value.map! {|dn| LdapAlias.new Net::LDAP::DN.new(dn), @user}
       elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
         # Integer
         value.map! {|num| Integer(num)}
@@ -419,6 +421,7 @@ class Entry
   end
 
   def initialize(ldapentry: nil, **options)
+    @tasks = []
     options.each do |fieldname, value|
       if value
         fieldname = self.class.ldaptofield(fieldname) || fieldname
@@ -452,13 +455,15 @@ class Entry
   end
 
   def rdn
-    if @label
-      uid = @label.to_s
-      @noldapobject = false
-    else
-      @noldapobject = true
+    unless @uniqueidentifier
+      if @label
+        @uniqueidentifier = @label.to_s
+        @noldapobject = false
+      else
+        @noldapobject = true
+      end
     end
-    [:uniqueidentifier, uid]
+    [:uniqueidentifier, @uniqueidentifier]
   end
   
   def basedn
@@ -566,17 +571,30 @@ class Entry
       puts "Can't add alias under #{dn} to #{dest.inspect} because the latter has no DN"
     end
   end
- 
-  def renameandmoveto(newsuperior)
-    (rdnfield, rdnvalue) = rdn
-    newdn = Net::LDAP::DN.new rdnfield.to_s, getnewrdn
-    puts "Renaming #{self.dn}"
-    puts "      to #{newdn},#{newsuperior}"
-    unless @user.ldap.rename(olddn: self.dn, newrdn: newdn, delete_attributes: true, new_superior: newsuperior)
-      raise "Couldn't rename #{self.dn} to #{newdn},#{newsuperior}"
+
+  def fixreferences(old, new)
+    @tasks.each do |task|
+      task.object.updatedns(old, new)
     end
   end
   
+  def renameandmoveto(newsuperior)
+    puts newsuperior
+    (rdnfield, rdnvalue) = rdn
+    newrdn = Net::LDAP::DN.new rdnfield.to_s, getnewrdn
+    newdn = Net::LDAP::DN.new rdnfield.to_s, getnewrdn, newsuperior
+    puts "Renaming #{dn}"
+    puts "      to #{newdn}"
+    fixreferences self, newdn
+    unless @user.ldap.rename(olddn: self.dn, newrdn: newrdn, delete_attributes: true, new_superior: newsuperior)
+      raise "Couldn't rename #{self.dn} to #{newdn}"
+    end
+  end
+  
+  def updatedns(from, to)
+    raise "Not mapping #{from.dn} to #{to} in #{self.inspect}"
+  end
+
   def inspect
     if @baddata
       "#<#{self.class}: #{to_s} :BAD>"
@@ -612,7 +630,9 @@ class Entry
           syntax = @user.attributemetadata[fieldname][:syntax]
           if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
             # DN
-            if value.dn
+            if value.is_a? Net::LDAP::DN
+              ops.push [:add, fieldname, value]
+            elsif value.dn
               ops.push [:add, fieldname, value.dn]
             end
           elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
@@ -637,23 +657,29 @@ class Entry
       end
     end
   end
-  
+
+  def deleteinstancevariable(fieldname, value)
+    if self.class.multivaluefield(fieldname)
+      if oldvalues = instance_variable_get("@#{fieldname}".to_sym)
+        instance_variable_set "@#{fieldname}".to_sym, oldvalues.delete_if {|i| i == value}
+      end
+    else
+      instance_variable_set "@#{fieldname}".to_sym, nil
+    end
+  end
+
   def deletefields(**options)
     ops = []
     options.each do |fieldname, value|
-      if self.class.multivaluefield(fieldname)
-        if oldvalues = instance_variable_get("@#{fieldname}".to_sym)
-          instance_variable_set "@#{fieldname}".to_sym, oldvalues.delete_if {|i| i == value}
-        end
-      else
-        instance_variable_set "@#{fieldname}".to_sym, nil
-      end
+      deleteinstancevariable fieldname, value
       if @user and @dn
         if fieldname = self.class.fieldtoldap(fieldname)
           syntax = @user.attributemetadata[fieldname][:syntax]
           if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
             # DN
-            if value.dn
+            if value.is_a? Net::LDAP::DN
+              ops.push [:delete, fieldname, value]
+            elsif value.dn
               ops.push [:delete, fieldname, value.dn]
             end
           elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
@@ -673,23 +699,31 @@ class Entry
     end
   end
   
+  def modifyinstancevariable(fieldname, oldvalue, newvalue)
+    if self.class.multivaluefield(fieldname)
+      if oldvalues = instance_variable_get("@#{fieldname}".to_sym)
+        instance_variable_set "@#{fieldname}".to_sym, oldvalues.delete_if {|i| i == oldvalue}
+      end
+    else
+      instance_variable_set "@#{fieldname}".to_sym, nil
+    end
+  end
+
   def modifyfields(**options)
     ops = []
     options.each do |fieldname, valuepairs|
       valuepairs.each do |oldvalue, newvalue|
-        if self.class.multivaluefield(fieldname)
-          if oldvalues = instance_variable_get("@#{fieldname}".to_sym)
-            instance_variable_set "@#{fieldname}".to_sym, oldvalues.delete_if {|i| i == oldvalue}
-          end
-        else
-          instance_variable_set "@#{fieldname}".to_sym, nil
+        unless newvalue.is_a? Net::LDAP::DN
+          modifyinstancevariable fieldname, oldvalue, newvalue
         end
         if @user and @dn
           if fieldname = self.class.fieldtoldap(fieldname)
             syntax = @user.attributemetadata[fieldname][:syntax]
             if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
               # DN
-              if newvalue.dn
+              if newvalue.is_a? Net::LDAP::DN
+                ops.push [:replace, fieldname, [oldvalue.dn, newvalue]]
+              elsif newvalue.dn
                 ops.push [:replace, fieldname, [oldvalue.dn, newvalue.dn]]
               end
             elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
@@ -713,7 +747,7 @@ class Entry
   def superior
     if @superior
       @superior
-    else
+    elsif dn
       superiordn = Net::LDAP::DN.new *((Net::LDAP::DN.new dn).to_a[2..999])
       @user.objectfromdn[superiordn]
     end
@@ -926,34 +960,43 @@ class Event < Entry
   attr_reader :sources
   attr_gedcom :sources, :sour
   attr_ldap :source, :sourcedns
+  attr_multi :tasks
+  attr_ldap :tasks, :taskdns
 
+  class << self
+    def fieldnametoclass(fieldname)
+      if [:fams, :famc, :fam].member? fieldname
+        Family
+      elsif fieldname == :date
+        RoughDate
+      elsif fieldname == :place
+        Place
+      else
+        super
+      end
+    end
+  end
+
+  def initialize(**options)
+    @sources = []
+    super(**options)
+  end
+  
   def === (foo)
-    (@year === foo.year) && (@month === foo.month) && (@day === foo.day) && (@relativetodate === foo.relativetodate) && (@place === foo.place)
+    super || ((@year === foo.year) && (@month === foo.month) && (@day === foo.day) && (@relativetodate === foo.relativetodate) && (@place === foo.place))
   end
   
   def getnewrdn
     "#{description} #{date} #{place}".rstrip
   end
   
-  def renameto(newdn, newsuperior)
-    if @sources
-      raise "Not fixing #{@sources.inspect}"
+  def fixreferences(old, new)
+    @sources.each do |source|
+      source.object.updatedns(old, new)
     end
     super
   end
 
-  def self.fieldnametoclass(fieldname)
-    if [:fams, :famc, :fam].member? fieldname
-      Family
-    elsif fieldname == :date
-      RoughDate
-    elsif fieldname == :place
-      Place
-    else
-      super
-    end
-  end
-  
   def addfields(**options)
     unless @description
       if options[:date]
@@ -987,7 +1030,11 @@ class IndividualEvent < Event
   ldap_class :gedcomindividualevent
 
   def individual
-    parent
+    if superior.is_a? IndividualEvent
+      superior.individual
+    else
+      superior
+    end
   end
 
   def to_s
@@ -998,6 +1045,10 @@ class IndividualEvent < Event
     end
   end
 
+  def fixreferences(old, new)
+    individual.updatedns(old, new)
+    super
+  end
 end
 
 class Birth < IndividualEvent
@@ -1071,11 +1122,13 @@ class Marriage < CoupleEvent
   attr_gedcom :officiator, :offi
   attr_ldap :officiator, :officiator
 
-  def self.fieldnametoclass(fieldname)
-    if fieldname == :officiator
-      Officiator
-    else
-      super
+  class << self
+    def fieldnametoclass(fieldname)
+      if fieldname == :officiator
+        Officiator
+      else
+        super
+      end
     end
   end
 end
@@ -1171,30 +1224,34 @@ class Individual < Entry
   attr_ldap :first, :givenname
   attr_ldap :last, :sn
   attr_ldap :suffix, :initials
+  attr_multi :tasks
+  attr_ldap :tasks, :taskdns
 
-  def self.fieldnametoclass(fieldname)
-    if [:auth, :cause, :cont, :corp, :file, :form, :phon, :publ, :title, :description, :version].member? fieldname
-      StringArgument
-    elsif [:fams, :famc, :fam].member? fieldname
-      Family
-    elsif fieldname == :adoption
-      Adoption
-    elsif fieldname == :baptism
-      Baptism
-    elsif fieldname == :birth
-      Birth
-    elsif fieldname == :burial
-      Burial
-    elsif fieldname == :death
-      Death
-    elsif fieldname == :events
-      IndividualEvent
-    elsif fieldname == :names
-      Name
-    elsif fieldname == :gender
-      Gender
-    else
-      super
+  class << self
+    def fieldnametoclass(fieldname)
+      if [:auth, :cause, :cont, :corp, :file, :form, :phon, :publ, :title, :description, :version].member? fieldname
+        StringArgument
+      elsif [:fams, :famc, :fam].member? fieldname
+        Family
+      elsif fieldname == :adoption
+        Adoption
+      elsif fieldname == :baptism
+        Baptism
+      elsif fieldname == :birth
+        Birth
+      elsif fieldname == :burial
+        Burial
+      elsif fieldname == :death
+        Death
+      elsif fieldname == :events
+        IndividualEvent
+      elsif fieldname == :names
+        Name
+      elsif fieldname == :gender
+        Gender
+      else
+        super
+      end
     end
   end
   
@@ -1277,6 +1334,36 @@ class Individual < Entry
       end
     end
     super(**options)
+  end
+
+  def updatedns(from, to)
+    puts "    Updating DNs in #{self.dn} from #{from.dn} to #{to}"
+    if @birth
+      if from.dn.to_s === @birth.dn.to_s
+        modifyfields(birth: {from => to})
+      end
+    end
+    if @adoption
+      if from.dn.to_s === @adoption.dn.to_s
+        modifyfields(adoption: {from => to})
+      end
+    end
+    if @baptism
+      if from.dn.to_s === @baptism.dn.to_s
+        modifyfields(baptism: {from => to})
+      end
+    end
+    if @death
+      if from.dn.to_s === @death.dn.to_s
+        deletefields(death: from)
+        addfields(death: to)
+      end
+    end
+    if @burial
+      if from.dn.to_s === @burial.dn.to_s
+        modifyfields(burial: {from => to})
+      end
+    end
   end
 end
 
@@ -1588,14 +1675,7 @@ class Page < Entry
   end
 
   def === (foo)
-    if self == foo
-      true
-    elsif foo.is_a? Page
-      #(@sources === foo.sources) and (@pageno === foo.pageno)
-      @pageno === foo.pageno
-    else
-      false
-    end
+    (self == foo) or super or (foo.is_a?(Page) and (@pageno === foo.pageno))
   end
 
   def mergeinto(foo)
@@ -1636,22 +1716,24 @@ class Family < Entry
   attr_gedcom :marriage, :marr
   attr_gedcom :divorce, :div
   
-  def self.fieldnametoclass(fieldname)
-    if fieldname == :divorce
-      Divorce
-    elsif fieldname == :events
-      CoupleEvent
-    elsif fieldname == :marriage
-      Marriage
-    else
-      super
+  class << self
+    def fieldnametoclass(fieldname)
+      if fieldname == :divorce
+        Divorce
+      elsif fieldname == :events
+        CoupleEvent
+      elsif fieldname == :marriage
+        Marriage
+      else
+        super
+      end
     end
   end
   
   def initialize(**options)
     @events = []
     @children = []
-    super
+    super(**options)
   end
   
   def to_s
@@ -1833,15 +1915,35 @@ class ErrorAddingField < Task
   attr_ldap :fieldname, :fieldname
   attr_ldap :newvalue, :newentrydn
 
+  def initialize(ldapentry: nil, **options)
+    super(ldapentry: ldapentry, **options)
+    unless ldapentry
+      @superiorentry.addfields(tasks: self)
+      @newvalue.addfields(tasks: self)
+    end
+  end
+
   def describeinfull
     puts "Error adding field (#{@uniqueidentifier})"
     puts "    #{@fieldname.to_sym.inspect} in #{@superiorentry}"
     puts "    first value: #{@superiorentry.send(@fieldname)}"
-    puts "    second value: #{@newvalue}"
+    puts "    second value: #{@newvalue.dn}"
   end
   
+  def updatedns(from, to)
+    puts "    Updating DNs in #{self.dn} from #{from.dn} to #{to}"
+    if from.dn.to_s === @superiorentry.dn.to_s
+      modifyfields(superiorentry: {from => to})
+    end
+    if from.dn.to_s === @newvalue.dn.to_s
+      # Don't know why replacefields doesn't work here!
+      deletefields(newvalue: from)
+      addfields(newvalue: to)
+    end
+  end
+
   def to_s
-    "Error adding #{fieldname.inspect} in #{superiorentry.inspect}"
+    "Error adding #{fieldname.inspect} in #{superiorentry.dn}"
   end
 end
 
