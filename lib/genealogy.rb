@@ -291,8 +291,6 @@ class Entry
     def fieldnametoclass(fieldname)
       if [:auth, :cause, :cont, :corp, :file, :form, :phon, :publ, :title, :description, :version].member? fieldname
         StringArgument
-      elsif [:fams, :famc, :fam].member? fieldname
-        Family
       elsif fieldname == :address
         Address
       elsif fieldname == :charset
@@ -973,9 +971,7 @@ class Event < Entry
 
   class << self
     def fieldnametoclass(fieldname)
-      if [:fams, :famc, :fam].member? fieldname
-        Family
-      elsif fieldname == :date
+      if fieldname == :date
         RoughDate
       elsif fieldname == :place
         Place
@@ -1149,7 +1145,20 @@ class Adoption < IndividualEvent
   ldap_class :gedcomadoption
   attr_reader :parents
   attr_ldap :parents, :parentdns
+  attr_multi :parentoffamily
+  attr_gedcom :parentoffamily, :fams
+  attr_gedcom :childoffamily, :famc
 
+  class << self
+    def fieldnametoclass(fieldname)
+      if [:parentoffamily, :childoffamily].member? fieldname
+        Family
+      else
+        super
+      end
+    end
+  end
+  
   def initialize(superior: nil, ldapentry: nil, **options)
     @parents = []
     if ldapentry
@@ -1161,7 +1170,7 @@ class Adoption < IndividualEvent
 
   def addfields(**options)
     options.each do |fieldname, value|
-      if fieldname == :famc
+      if fieldname == :childoffamily
         value.addfields(events: self)
         if value.respond_to?(:husband) and value.husband
           @parents.push value.husband
@@ -1177,7 +1186,7 @@ class Adoption < IndividualEvent
 
   def deletefields(**options)
     options.each do |fieldname, value|
-      if fieldname == :famc
+      if fieldname == :childoffamily
         value.deletefields(even: self)
         if value.husband
           @parents.delete_if {|i| i == value.husband}
@@ -1234,12 +1243,15 @@ class Individual < Entry
   attr_ldap :suffix, :initials
   attr_multi :tasks
   attr_ldap :tasks, :taskdns
+  attr_multi :parentoffamily
+  attr_gedcom :parentoffamily, :fams
+  attr_gedcom :childoffamily, :famc
 
   class << self
     def fieldnametoclass(fieldname)
       if [:auth, :cause, :cont, :corp, :file, :form, :phon, :publ, :title, :description, :version].member? fieldname
         StringArgument
-      elsif [:fams, :famc, :fam].member? fieldname
+      elsif [:parentoffamily, :childoffamily].member? fieldname
         Family
       elsif fieldname == :adoption
         Adoption
