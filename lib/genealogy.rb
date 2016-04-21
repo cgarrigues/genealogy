@@ -713,29 +713,37 @@ class Entry
     ops = []
     options.each do |fieldname, valuepairs|
       valuepairs.each do |oldvalue, newvalue|
-        unless newvalue.is_a? Net::LDAP::DN
-          modifyinstancevariable fieldname, oldvalue, newvalue
-        end
-        if @user and @dn
-          if fieldname = self.class.fieldtoldap(fieldname)
-            syntax = @user.attributemetadata[fieldname][:syntax]
-            if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
-              # DN
-              if newvalue.is_a? Net::LDAP::DN
-                ops.push [:replace, fieldname, [oldvalue.dn, newvalue]]
-              elsif newvalue.dn
-                ops.push [:replace, fieldname, [oldvalue.dn, newvalue.dn]]
+        if not instance_variable_get("@#{fieldname}".to_sym)
+          raise "Trying to change #{fieldname} in #{self.inspect} from #{oldvalue.inspect} to #{newvalue.inspect}, but #{fieldname} is not defined"
+        elsif self.class.multivaluefield(fieldname) ?
+             instance_variable_get("@#{fieldname}".to_sym).include?(oldvalue) :
+             (oldvalue === instance_variable_get("@#{fieldname}".to_sym))
+          unless newvalue.is_a? Net::LDAP::DN
+            modifyinstancevariable fieldname, oldvalue, newvalue
+          end
+          if @user and @dn
+            if fieldname = self.class.fieldtoldap(fieldname)
+              syntax = @user.attributemetadata[fieldname][:syntax]
+              if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
+                # DN
+                if newvalue.is_a? Net::LDAP::DN
+                  ops.push [:replace, fieldname, [oldvalue.dn, newvalue]]
+                elsif newvalue.dn
+                  ops.push [:replace, fieldname, [oldvalue.dn, newvalue.dn]]
+                end
+              elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
+                # Integer
+                ops.push [:delete, fieldname, [oldvalue.to_s, newvalue.to_s]]
+              elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
+                # Boolean
+                ops.push [:delete, fieldname, [oldvalue.to_s.upcase, newvalue.to_s.upcase]]
+              else
+                ops.push [:delete, fieldname, [oldvalue, newvalue]]
               end
-            elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
-              # Integer
-              ops.push [:delete, fieldname, [oldvalue.to_s, newvalue.to_s]]
-            elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
-              # Boolean
-              ops.push [:delete, fieldname, [oldvalue.to_s.upcase, newvalue.to_s.upcase]]
-            else
-              ops.push [:delete, fieldname, [oldvalue, newvalue]]
             end
           end
+        else
+          raise "Trying to change #{fieldname} in #{self.inspect} <from #{oldvalue.inspect} to #{newvalue.inspect}, but #{fieldname} contains #{instance_variable_get("@#{fieldname}".to_sym).inspect}"
         end
       end
     end
