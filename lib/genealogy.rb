@@ -424,7 +424,11 @@ class Entry
       if value
         fieldname = self.class.ldaptofield(fieldname) || fieldname
         if self.class.multivaluefield(fieldname)
-          instance_variable_set "@#{fieldname}".to_sym, [value]
+          if value.is_a? Array
+            instance_variable_set "@#{fieldname}".to_sym, value
+          else
+            instance_variable_set "@#{fieldname}".to_sym, [value]
+          end
         else
           instance_variable_set "@#{fieldname}".to_sym, value
         end
@@ -433,8 +437,12 @@ class Entry
     if @label
       @sources[0].label[@label] = self
       @sources[0].references[@label].each do |ref|
-        #ref.superior.modifyfields(ref.fieldname => {ref => self})
-        ref.superior.addfields(ref.fieldname => self)
+        iv = ref.superior.instance_variable_get("@#{ref.fieldname}".to_sym)
+        if iv
+          ref.superior.modifyfields(ref.fieldname => {iv => self})
+        else
+          ref.superior.addfields(ref.fieldname => self)
+        end
       end
     end
     if ldapentry
@@ -614,35 +622,59 @@ class Entry
     end
   end
   
+  def addldapops(fieldname, value)
+    ops = []
+    (rdnfield, rdnvalue) = rdn
+    if fieldname = self.class.fieldtoldap(fieldname)
+      if not(dn) and (rdnfield == fieldname)
+        @dn = Net::LDAP::DN.new fieldname.to_s, value, basedn
+        #puts "Delayed addition of #{@dn} to ldap"
+        self.addtoldap
+      end
+      if not(@noldapobject) and @user and @dn
+        syntax = @user.attributemetadata[fieldname][:syntax]
+        if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
+          # DN
+          if value.is_a? Net::LDAP::DN
+            ops.push [:add, fieldname, value]
+          elsif value.dn
+            ops.push [:add, fieldname, value.dn]
+          end
+        elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
+          # Integer
+          ops.push [:add, fieldname, value.to_s]
+        elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
+          # Boolean
+          ops.push [:add, fieldname, value.to_s.upcase]
+        else
+          ops.push [:add, fieldname, value]
+        end
+      end
+    end
+    return ops
+  end
+  
   def addfields(**options)
     ops = []
-    (rdnfield, rdnvalue) = self.rdn
     options.each do |fieldname, value|
-      setinstancevariable fieldname, value
-      if fieldname = self.class.fieldtoldap(fieldname)
-        if not(dn) and (rdnfield == fieldname)
-          @dn = Net::LDAP::DN.new fieldname.to_s, value, basedn
-          #puts "Delayed addition of #{@dn} to ldap"
-          self.addtoldap
+      iv = instance_variable_get("@#{fieldname}".to_sym)
+      if self.class.multivaluefield(fieldname)
+        if iv and iv.any? {|v| v === value}
+          raise "Trying to add #{value.inspect} to #{fieldname} in #{self.inspect}, but it is already defined"
+        else
+          setinstancevariable fieldname, value
+          ops.concat addldapops fieldname, value
         end
-        if not(@noldapobject) and @user and @dn
-          syntax = @user.attributemetadata[fieldname][:syntax]
-          if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
-            # DN
-            if value.is_a? Net::LDAP::DN
-              ops.push [:add, fieldname, value]
-            elsif value.dn
-              ops.push [:add, fieldname, value.dn]
-            end
-          elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
-            # Integer
-            ops.push [:add, fieldname, value.to_s]
-          elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
-            # Boolean
-            ops.push [:add, fieldname, value.to_s.upcase]
+      else
+        if iv and not (iv == "")
+          if value === iv
+            raise "Trying to add #{value.inspect} to #{fieldname} in #{self.inspect}, but it is already defined"
           else
-            ops.push [:add, fieldname, value]
+            raise "Trying to add #{value.inspect} to #{fieldname} in #{self.inspect}, but it is already defined as #{iv.inspect}"
           end
+        else
+          setinstancevariable fieldname, value
+          ops.concat addldapops fieldname, value
         end
       end
     end
@@ -2013,6 +2045,6 @@ class ParseGedcomFile < Task
   end
   
   def to_s
-    "Parse gedcom file #{gedcomsource.title}"
+    "Parse gedcom file #{@gedcomsource.title}"
   end
 end
