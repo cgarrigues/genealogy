@@ -437,7 +437,7 @@ class Entry
     if @label
       @sources[0].label[@label] = self
       @sources[0].references[@label].each do |ref|
-        iv = ref.superior.fieldvalue(ref.fieldname)
+        iv = ref.superior.getinstancevariable(ref.fieldname)
         if iv
           ref.superior.modifyfields(ref.fieldname => {iv => self})
         else
@@ -495,7 +495,7 @@ class Entry
         attrs[rdnfield] = rdnvalue
         self.class.ldapfields.each do |fieldname|
           ldapfieldname = self.class.fieldtoldap(fieldname) || fieldname
-          if value = fieldvalue(fieldname)
+          if value = getinstancevariable(fieldname)
             if value == ""
               value = []
             else
@@ -612,7 +612,7 @@ class Entry
 
   def setinstancevariable(fieldname, value)
     if self.class.multivaluefield(fieldname)
-      if oldvalues = fieldvalue(fieldname)
+      if oldvalues = getinstancevariable(fieldname)
         instance_variable_set "@#{fieldname}".to_sym, oldvalues + [value]
       else
         instance_variable_set "@#{fieldname}".to_sym, [value]
@@ -620,6 +620,10 @@ class Entry
     else
       instance_variable_set "@#{fieldname}".to_sym, value
     end
+  end
+  
+  def getinstancevariable(fieldname)
+    instance_variable_get("@#{fieldname}".to_sym)
   end
   
   def addldapops(fieldname, value)
@@ -654,14 +658,10 @@ class Entry
     return ops
   end
   
-  def fieldvalue(fieldname)
-    instance_variable_get("@#{fieldname}".to_sym)
-  end
-  
   def addfields(**options)
     ops = []
     options.each do |fieldname, value|
-      iv = fieldvalue(fieldname)
+      iv = getinstancevariable(fieldname)
       if self.class.multivaluefield(fieldname)
         if iv and iv.any? {|v| v === value}
           raise "Trying to add #{value.inspect} to #{fieldname} in #{self.inspect}, but it is already defined"
@@ -695,7 +695,7 @@ class Entry
 
   def deleteinstancevariable(fieldname, value)
     if self.class.multivaluefield(fieldname)
-      if oldvalues = fieldvalue(fieldname)
+      if oldvalues = getinstancevariable(fieldname)
         instance_variable_set "@#{fieldname}".to_sym, oldvalues.delete_if {|i| i == value}
       end
     else
@@ -706,7 +706,7 @@ class Entry
   def deletefields(**options)
     ops = []
     options.each do |fieldname, value|
-      iv = fieldvalue(fieldname)
+      iv = getinstancevariable(fieldname)
       deleteinstancevariable fieldname, value
       if not iv
         raise "Trying to delete #{value.inspect} from #{fieldname} in #{self.inspect}, but #{fieldname} is not defined"
@@ -745,7 +745,7 @@ class Entry
   
   def modifyinstancevariable(fieldname, oldvalue, newvalue)
     if self.class.multivaluefield(fieldname)
-      if oldvalues = fieldvalue(fieldname)
+      if oldvalues = getinstancevariable(fieldname)
         instance_variable_set "@#{fieldname}".to_sym, oldvalues.delete_if {|i| i == oldvalue}
       end
     else
@@ -757,7 +757,7 @@ class Entry
     ops = []
     options.each do |fieldname, valuepairs|
       valuepairs.each do |oldvalue, newvalue|
-        iv = fieldvalue(fieldname)
+        iv = getinstancevariable(fieldname)
         if not iv
           raise "Trying to change #{fieldname} in #{self.inspect} from #{oldvalue.inspect} to #{newvalue.inspect}, but #{fieldname} is not defined"
         elsif self.class.multivaluefield(fieldname) ?
@@ -859,7 +859,12 @@ end
 
 class StringArgument < Entry
   def initialize(fieldname: "", arg: "", superior: nil, **options)
-    superior.addfields(fieldname => arg)
+    iv = superior.getinstancevariable(fieldname)
+    if superior.getinstancevariable('noldapobject') or (not iv) or (iv == "")
+      superior.setinstancevariable(fieldname, arg)
+    else
+      raise "what am I doing?"
+    end
   end
 end
 
