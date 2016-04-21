@@ -433,7 +433,8 @@ class Entry
     if @label
       @sources[0].label[@label] = self
       @sources[0].references[@label].each do |ref|
-        ref.superior.modifyfields(ref.fieldname => {ref => self})
+        #ref.superior.modifyfields(ref.fieldname => {ref => self})
+        ref.superior.addfields(ref.fieldname => self)
       end
     end
     if ldapentry
