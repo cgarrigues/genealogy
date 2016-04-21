@@ -289,7 +289,7 @@ class Entry
     end
     
     def fieldnametoclass(fieldname)
-      if [:auth, :cause, :cont, :corp, :file, :form, :phon, :publ, :title, :description, :version].member? fieldname
+      if [:auth, :cause, :corp, :file, :form, :phon, :publ, :title, :description, :version].member? fieldname
         StringArgument
       elsif fieldname == :address
         Address
@@ -840,15 +840,27 @@ class Address < Entry
   attr_reader :phones
   attr_multi :phon
   attr_gedcom :address, :addr
+  attr_gedcom :continuation, :cont
+  attr_multi :continuation
 
   def initialize(arg: "", **options)
     @phones = []
     super(address: arg, **options)
   end
   
+  class << self
+    def fieldnametoclass(fieldname)
+      if fieldname == :continuation
+        StringArgument
+      else
+        super
+      end
+    end
+  end
+
   def addfields(**options)
     options.each do |fieldname, value|
-      if fieldname == :cont
+      if fieldname == :continuation
         @address += "\n" + value
         options.delete fieldname
       end
@@ -860,7 +872,7 @@ end
 class StringArgument < Entry
   def initialize(fieldname: "", arg: "", superior: nil, **options)
     iv = superior.getinstancevariable(fieldname)
-    if superior.getinstancevariable('noldapobject') or (not iv) or (iv == "")
+    if superior.class.multivaluefield(fieldname) or superior.getinstancevariable('noldapobject') or (not iv) or (iv == "")
       superior.setinstancevariable(fieldname, arg)
     else
       raise "what am I doing?"
@@ -1310,7 +1322,7 @@ class Individual < Entry
 
   class << self
     def fieldnametoclass(fieldname)
-      if [:auth, :cause, :cont, :corp, :file, :form, :phon, :publ, :title, :description, :version].member? fieldname
+      if [:auth, :cause, :corp, :file, :form, :phon, :publ, :title, :description, :version].member? fieldname
         StringArgument
       elsif [:parentoffamily, :childoffamily].member? fieldname
         Family
@@ -1717,18 +1729,32 @@ end
 
 class Note < Entry
   attr_reader :note
+  attr_gedcom :continuation, :cont
+  attr_multi :continuation
 
   def initialize(arg: "", **options)
     super(note: arg, **options)
   end
 
+  class << self
+    def fieldnametoclass(fieldname)
+      if fieldname == :continuation
+        StringArgument
+      else
+        super
+      end
+    end
+  end
+
   def addfields(**options)
+    puts options.inspect
     options.each do |fieldname, value|
-      if fieldname == :cont
+      if fieldname == :continuation
         @note += "\n" + value
         options.delete fieldname
       end
     end
+    puts options.inspect
     super(**options)
   end
 
