@@ -573,7 +573,7 @@ class Entry
 
   def fixreferences(old, new)
     @tasks.each do |task|
-      task.object.updatedns(old, new)
+      task.object.updatedns old, new
     end
   end
   
@@ -997,11 +997,20 @@ class Event < Entry
   
   def fixreferences(old, new)
     @sources.each do |source|
-      source.object.updatedns(old, new)
+      source.object.updatedns old, new
     end
     super
   end
 
+  def mergeinto(otherpage)
+    puts "Merging #{dn}"
+    puts "   into #{otherpage.dn}"
+    fixreferences self, otherpage
+    puts "    Deleting #{dn}"
+    @user.ldap.delete dn: dn
+    @user.objectfromdn.delete dn
+  end
+  
   def addfields(**options)
     unless @description
       if options[:date]
@@ -1051,7 +1060,7 @@ class IndividualEvent < Event
   end
 
   def fixreferences(old, new)
-    individual.updatedns(old, new)
+    individual.updatedns old, new
     super
   end
 end
@@ -1700,13 +1709,19 @@ class Page < Entry
     (self == foo) or super or (foo.is_a?(Page) and (@pageno === foo.pageno))
   end
 
+  def fixreferences(old, new)
+    references.each do |ref|
+      puts "    Fixing #{ref.dn}"
+      ref.object.updatedns old, new
+    end
+  end
+  
   def mergeinto(otherpage)
     puts "Merging #{dn}"
     puts "   into #{otherpage.dn}"
+    fixreferences self, otherpage
     references.each do |ref|
-      puts "    Fixing #{ref.dn}"
-      ref.modifyfields(sources: {self => otherpage})
-      otherpage.addfields(references: ref)
+     otherpage.addfields references: ref
     end
     puts "    Deleting #{dn}"
     @user.ldap.delete dn: dn
