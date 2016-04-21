@@ -1367,7 +1367,6 @@ class Individual < Entry
   end
 
   def updatedns(from, to)
-    puts "    Updating DNs in #{self.dn} from #{from.dn} to #{to}"
     if @birth
       if from.dn.to_s === @birth.dn.to_s
         modifyfields(birth: {from => to})
@@ -1711,7 +1710,6 @@ class Page < Entry
 
   def fixreferences(old, new)
     references.each do |ref|
-      puts "    Fixing #{ref.dn}"
       ref.object.updatedns old, new
     end
   end
@@ -1972,7 +1970,6 @@ class ErrorAddingField < Task
   end
   
   def updatedns(from, to)
-    puts "    Updating DNs in #{self.dn} from #{from.dn} to #{to}"
     if from.dn.to_s === @superiorentry.dn.to_s
       modifyfields(superiorentry: {from => to})
     end
