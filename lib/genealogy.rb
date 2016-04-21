@@ -670,27 +670,36 @@ class Entry
   def deletefields(**options)
     ops = []
     options.each do |fieldname, value|
+      iv = instance_variable_get("@#{fieldname}".to_sym)
       deleteinstancevariable fieldname, value
-      if @user and @dn
-        if fieldname = self.class.fieldtoldap(fieldname)
-          syntax = @user.attributemetadata[fieldname][:syntax]
-          if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
-            # DN
-            if value.is_a? Net::LDAP::DN
+      if not iv
+        raise "Trying to delete #{value.inspect} from #{fieldname} in #{self.inspect}, but #{fieldname} is not defined"
+      elsif self.class.multivaluefield(fieldname) ?
+              (iv.any? {|v| v === value}) :
+              (value === iv)
+        if @user and @dn
+          if fieldname = self.class.fieldtoldap(fieldname)
+            syntax = @user.attributemetadata[fieldname][:syntax]
+            if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
+              # DN
+              if value.is_a? Net::LDAP::DN
+                ops.push [:delete, fieldname, value]
+              elsif value.dn
+                ops.push [:delete, fieldname, value.dn]
+              end
+            elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
+              # Integer
+              ops.push [:delete, fieldname, value.to_s]
+            elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
+              # Boolean
+              ops.push [:delete, fieldname, value.to_s.upcase]
+            else
               ops.push [:delete, fieldname, value]
-            elsif value.dn
-              ops.push [:delete, fieldname, value.dn]
             end
-          elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
-            # Integer
-            ops.push [:delete, fieldname, value.to_s]
-          elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
-            # Boolean
-            ops.push [:delete, fieldname, value.to_s.upcase]
-          else
-            ops.push [:delete, fieldname, value]
           end
         end
+      else
+        raise "Trying to delete #{oldvalue.inspect} from #{fieldname} in #{self.inspect}, but #{fieldname} contains #{iv.inspect}"
       end
     end
     unless ops == []
@@ -712,11 +721,12 @@ class Entry
     ops = []
     options.each do |fieldname, valuepairs|
       valuepairs.each do |oldvalue, newvalue|
-        if not instance_variable_get("@#{fieldname}".to_sym)
+        iv = instance_variable_get("@#{fieldname}".to_sym)
+        if not iv
           raise "Trying to change #{fieldname} in #{self.inspect} from #{oldvalue.inspect} to #{newvalue.inspect}, but #{fieldname} is not defined"
         elsif self.class.multivaluefield(fieldname) ?
-             (instance_variable_get("@#{fieldname}".to_sym).any? {|value| value === oldvalue}) :
-             (oldvalue === instance_variable_get("@#{fieldname}".to_sym))
+             (iv.any? {|value| value === oldvalue}) :
+             (oldvalue === iv)
           unless newvalue.is_a? Net::LDAP::DN
             modifyinstancevariable fieldname, oldvalue, newvalue
           end
@@ -742,7 +752,7 @@ class Entry
             end
           end
         else
-          raise "Trying to change #{fieldname} in #{self.inspect} from #{oldvalue.inspect} to #{newvalue.inspect}, but #{fieldname} contains #{instance_variable_get("@#{fieldname}".to_sym).inspect}"
+          raise "Trying to change #{fieldname} in #{self.inspect} from #{oldvalue.inspect} to #{newvalue.inspect}, but #{fieldname} contains #{iv.inspect}"
         end
       end
     end
@@ -1967,7 +1977,7 @@ class ErrorAddingField < Task
   def describeinfull
     puts "Error adding field (#{@uniqueidentifier})"
     puts "    #{@fieldname.to_sym.inspect} in #{@superiorentry}"
-    puts "    first value: #{@superiorentry.send(@fieldname)}"
+    puts "    first value: #{@superiorentry.send(@fieldname).dn}"
     puts "    second value: #{@newvalue.dn}"
   end
   
