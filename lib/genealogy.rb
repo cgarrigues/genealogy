@@ -1384,6 +1384,8 @@ class Individual < Entry
     end
     if @death
       if from.dn.to_s === @death.dn.to_s
+        # Don't know why modifyfields doesn't work here!
+        #modifyfields(death: {from => to})
         deletefields(death: from)
         addfields(death: to)
       end
@@ -1974,7 +1976,8 @@ class ErrorAddingField < Task
       modifyfields(superiorentry: {from => to})
     end
     if from.dn.to_s === @newvalue.dn.to_s
-      # Don't know why replacefields doesn't work here!
+      # Don't know why modifyfields doesn't work here!
+      #modifyfields(newvalue: {from => to})
       deletefields(newvalue: from)
       addfields(newvalue: to)
     end
