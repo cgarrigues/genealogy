@@ -231,7 +231,7 @@ class LdapAlias
   end
 
   def === (foo)
-    dn === foo.dn
+    dn.to_s === foo.dn.to_s
   end
   
   def object
@@ -392,7 +392,7 @@ class Entry
   attr_multi :sources
 
   def === (foo)
-    dn === foo.dn
+    dn.to_s === foo.dn.to_s
   end
   
   def populatefromldap(ldapentry)
@@ -715,7 +715,7 @@ class Entry
         if not instance_variable_get("@#{fieldname}".to_sym)
           raise "Trying to change #{fieldname} in #{self.inspect} from #{oldvalue.inspect} to #{newvalue.inspect}, but #{fieldname} is not defined"
         elsif self.class.multivaluefield(fieldname) ?
-             instance_variable_get("@#{fieldname}".to_sym).include?(oldvalue) :
+             (instance_variable_get("@#{fieldname}".to_sym).any? {|value| value === oldvalue}) :
              (oldvalue === instance_variable_get("@#{fieldname}".to_sym))
           unless newvalue.is_a? Net::LDAP::DN
             modifyinstancevariable fieldname, oldvalue, newvalue
@@ -742,7 +742,7 @@ class Entry
             end
           end
         else
-          raise "Trying to change #{fieldname} in #{self.inspect} <from #{oldvalue.inspect} to #{newvalue.inspect}, but #{fieldname} contains #{instance_variable_get("@#{fieldname}".to_sym).inspect}"
+          raise "Trying to change #{fieldname} in #{self.inspect} from #{oldvalue.inspect} to #{newvalue.inspect}, but #{fieldname} contains #{instance_variable_get("@#{fieldname}".to_sym).inspect}"
         end
       end
     end
@@ -1688,8 +1688,9 @@ class Page < Entry
   def initialize(arg: "", superior: nil, **options)
     if superior and superior.dn
       super(pageno: arg, sources: superior, superior: superior, references: superior.superior, **options)
-      #Change the source's superior to point to us instead of the source itself.
-      @sources[0].superior.modifyfields(sources: {superior => self})
+      # Add us to the source's superior
+      #source.superior.modifyfields(sources: {source => self})
+      source.superior.addfields(sources: self)
     else
       super(arg: arg, **options)
     end
@@ -1699,13 +1700,13 @@ class Page < Entry
     (self == foo) or super or (foo.is_a?(Page) and (@pageno === foo.pageno))
   end
 
-  def mergeinto(foo)
+  def mergeinto(otherpage)
     puts "Merging #{dn}"
-    puts "   into #{foo.dn}"
+    puts "   into #{otherpage.dn}"
     references.each do |ref|
       puts "    Fixing #{ref.dn}"
-      ref.modifyfields(sources: {self => foo})
-      foo.addfields(references: ref)
+      ref.modifyfields(sources: {self => otherpage})
+      otherpage.addfields(references: ref)
     end
     puts "    Deleting #{dn}"
     @user.ldap.delete dn: dn
@@ -1713,9 +1714,13 @@ class Page < Entry
   end
   
   def source
-    superior
+    if superior.is_a? Page
+      superior.source
+    else
+      superior
+    end
   end
-  
+
   def rdn
     @noldapobject = not(@pageno)
     [:pageno, pageno]
