@@ -1121,11 +1121,7 @@ class IndividualEvent < Event
   end
 
   def to_s
-    if date
-      "#{@individual} #{@description} #{date} #{@place}"
-    else
-      "#{@individual} #{@description} ? #{@place}"
-    end
+    "#{@individual} #{@description} #{date || '?'} #{@place}"
   end
 
   def fixreferences(old, new)
@@ -1346,7 +1342,11 @@ class Individual < Entry
     else
       deathdate = ''
     end
-    "#{@fullname} #{birthdate} - #{deathdate}".rstrip
+    if arg
+      "@#{arg}@ #{@fullname} #{birthdate} - #{deathdate}".rstrip
+    else
+      "#{@fullname} #{birthdate} - #{deathdate}".rstrip
+    end
   end
 
   def birth
@@ -1865,7 +1865,11 @@ class Family < Entry
     else
       wife = "unknown"
     end
-    "#{husband} and #{wife}"
+    if arg
+      "@${arg}@ #{husband} and #{wife}"
+    else
+      "#{husband} and #{wife}"
+    end
   end
 
   def addfields(**options)
