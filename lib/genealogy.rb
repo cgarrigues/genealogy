@@ -681,7 +681,7 @@ class Entry
           if value === iv
             raise "Trying to add #{value.inspect} to #{fieldname.inspect} in #{self.inspect}, but it is already defined"
           else
-            raise "Trying to add #{value.inspect} to #{fieldname.inspect} in #{self.inspect}, but it is already defined as #{iv.dn}"
+            ErrorAddingField.new superiorentry: self, fieldname: fieldname.to_s, newvalue: value, user: @user
           end
         else
           setinstancevariable fieldname, value
@@ -690,13 +690,7 @@ class Entry
       end
     end
     unless ops == []
-      begin
-        @user.modifyattributes @dn, ops
-      rescue RuntimeError => e
-        options.each do |fieldname, value|
-          ErrorAddingField.new superiorentry: self, fieldname: fieldname.to_s, newvalue: value, user: @user
-        end
-      end
+      @user.modifyattributes @dn, ops
     end
   end
 
@@ -879,11 +873,6 @@ end
 class StringArgument < Entry
   def initialize(fieldname: "", arg: "", superior: nil, **options)
     iv = superior.getinstancevariable(fieldname)
-    puts fieldname.inspect
-    puts arg.inspect
-    puts iv.inspect
-    puts superior.class.multivaluefield(fieldname).inspect
-    puts superior.getinstancevariable('noldapobject').inspect
     if superior.class.multivaluefield(fieldname) or superior.getinstancevariable('noldapobject') or (not iv) or (iv == "")
       superior.addfields(fieldname => arg)
     else
@@ -1754,14 +1743,12 @@ class Note < Entry
   end
 
   def addfields(**options)
-    puts options.inspect
     options.each do |fieldname, value|
       if fieldname == :continuation
         @note += "\n" + value
         options.delete fieldname
       end
     end
-    puts options.inspect
     super(**options)
   end
 
