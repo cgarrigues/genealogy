@@ -1829,6 +1829,7 @@ class Family < Entry
   attr_multi :events
   attr_gedcom :events, :even
   attr_reader :children
+  attr_multi :children
   attr_gedcom :children, :chil
   attr_gedcom :marriage, :marr
   attr_gedcom :divorce, :div
@@ -1878,32 +1879,26 @@ class Family < Entry
   def addfields(**options)
     options.each do |fieldname, value|
       if fieldname == :husband
-        @husband = value
         @children.each do |child|
-          child.addfields(father: @husband)
+          child.addfields(father: value)
         end
         @events.each do |event|
-          @husband.addfields(events: event)
+          value.addfields(events: event)
         end
-        options.delete fieldname
       elsif fieldname == :wife
-        @wife = value
         @children.each do |child|
-          child.addfields(mother: @wife)
+          child.addfields(mother: value)
         end
         @events.each do |event|
-          @wife.addfields(events: event)
+          value.addfields(events: event)
         end
-        options.delete fieldname
       elsif fieldname == :children
-        @children.push value
         if @husband
           value.addfields(father: @husband)
         end
         if @wife
           value.addfields(mother: @wife)
         end
-        options.delete fieldname
       elsif fieldname == :events
         if @husband
           @husband.addfields(events: value)
