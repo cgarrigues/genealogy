@@ -1849,6 +1849,10 @@ class Family < Entry
     super(**options)
   end
   
+  def === (foo)
+    (arg and (arg === foo.arg)) && (super || ((@husband === foo.husband) && (@@wife === foo.wife) && (@@children === foo.children)))
+  end
+
   def to_s
     if @husband
       husband = @husband
