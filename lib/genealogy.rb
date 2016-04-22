@@ -1769,9 +1769,10 @@ class Page < Entry
   def initialize(arg: "", superior: nil, **options)
     if superior and superior.dn
       super(pageno: arg, sources: superior, superior: superior, references: superior.superior, **options)
-      # Add us to the source's superior
-      #source.superior.modifyfields(sources: {source => self})
-      source.superior.addfields(sources: self)
+      # Add us to the source's superior unless we're already there
+      unless source.superior.sources.any? {|v| v === self}
+        source.superior.addfields(sources: self)
+      end
     else
       super(arg: arg, **options)
     end
