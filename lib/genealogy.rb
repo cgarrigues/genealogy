@@ -453,7 +453,14 @@ class Entry
       end
     end
     if @superior
-      @superior.addfields(fieldname => self)
+      if @superior.class.multivaluefield(fieldname)
+        iv = @superior.getinstancevariable(fieldname)
+        unless (iv and iv.any? {|v| v === self})
+          @superior.addfields(fieldname => self)
+        end
+      else
+        @superior.addfields(fieldname => self)
+      end
     end
   end
 
@@ -538,12 +545,12 @@ class Entry
           end
           unless added
             message = @user.ldap.get_operation_result.message
-#            if message =~ /Entry Already Exists/
-#              dupcount += 1
-#              @dn = Net::LDAP::DN.new rdnfield.to_s, rdnvalue, @dn
-#            else
+            if message =~ /Entry Already Exists/
+              dupcount += 1
+              @dn = Net::LDAP::DN.new rdnfield.to_s, rdnvalue, @dn
+            else
               raise "Couldn't add #{self.inspect} at #{@dn} with attributes #{attrs.inspect}: #{message}"
-#            end
+            end
           end
         end
         if dupcount == 1
