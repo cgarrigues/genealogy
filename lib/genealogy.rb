@@ -1834,6 +1834,7 @@ class Family < Entry
   attr_gedcom :husband, :husb
   attr_reader :wife
   attr_reader :events
+  attr_multi :events
   attr_gedcom :events, :even
   attr_reader :children
   attr_gedcom :children, :chil
