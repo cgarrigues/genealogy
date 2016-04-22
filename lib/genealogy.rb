@@ -1166,6 +1166,7 @@ end
 class CoupleEvent < Event
   ldap_class :gedcomcoupleevent
   attr_ldap :couple, :coupledns
+  attr_multi :couple
 
   def initialize(superior: nil, ldapentry: nil, **options)
     @superiors = []
@@ -1179,11 +1180,18 @@ class CoupleEvent < Event
       if superior.wife
         couple.push superior.wife
       end
-      super(couple: couple, description: "#{self.class} of #{couple.map {|i| i.fullname}.join(' and ')}", **options)
+      super(couple: couple, **options)
       couple[1..999].each do |i|
         i.makealias self
       end
     end
+  end
+
+  def addfields(**options)
+    if options[:description]
+      options[:description] << " for #{@couple.map {|i| i.fullname}.join(' and ')}"
+    end
+    super(**options)
   end
 
   def basedn
@@ -1870,7 +1878,7 @@ class Family < Entry
       wife = "unknown"
     end
     if arg
-      "@${arg}@ #{husband} and #{wife}"
+      "@#{arg}@ #{husband} and #{wife}"
     else
       "#{husband} and #{wife}"
     end
