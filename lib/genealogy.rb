@@ -1360,8 +1360,8 @@ class Individual < Entry
     else
       deathdate = ''
     end
-    if arg
-      "@#{arg}@ #{@fullname} #{birthdate} - #{deathdate}".rstrip
+    if @arg
+      "@#{@arg}@ #{@fullname} #{birthdate} - #{deathdate}".rstrip
     else
       "#{@fullname} #{birthdate} - #{deathdate}".rstrip
     end
@@ -1874,10 +1874,10 @@ class Family < Entry
   end
 
   def to_s
-    if arg == ''
+    if @arg == ''
       "#{@husband || 'unknown'} and #{@wife || 'unknown'}"
     else
-      "@#{arg}@ #{@husband || 'unknown'} and #{@wife || 'unknown'}"
+      "@#{@arg}@ #{@husband || 'unknown'} and #{@wife || 'unknown'}"
     end
   end
 
@@ -2051,8 +2051,11 @@ class MultipleEntriesForNonMultiField < Task
   def describeinfull
     puts "Duplicate entry in field (#{@uniqueidentifier})"
     puts "    #{@fieldname.to_sym.inspect} in #{@superiorentry}"
-    puts "    first value: #{@superiorentry.send(@fieldname).dn}"
-    puts "    second value: #{@newvalue.dn}"
+    firstvalue = @superiorentry.send(@fieldname)
+    puts "    first value:  #{firstvalue}"
+    puts "                  #{firstvalue.dn}"
+    puts "    second value: #{@newvalue}"
+    puts "                  #{@newvalue.dn}"
   end
   
   def updatedns(from, to)
