@@ -448,8 +448,6 @@ class Entry
           end
         elsif iv
           ref.superior.modifyfields(ref.fieldname => {iv => self})
-        else
-          ref.superior.addfields(ref.fieldname => self)
         end
       end
     end
@@ -1123,6 +1121,13 @@ class IndividualEvent < Event
     end
   end
 
+  def addfields(**options)
+    if options[:description]
+      options[:description] << " of #{individual}"
+    end
+    super(**options)
+  end
+  
   def to_s
     "#{@individual} #{@description} #{date || '?'} #{@place}"
   end
@@ -1186,7 +1191,7 @@ class CoupleEvent < Event
 
   def addfields(**options)
     if options[:description]
-      options[:description] << " for #{@couple.map {|i| i.fullname}.join(' and ')}"
+      options[:description] << " of #{@couple.map {|i| i.fullname}.join(' and ')}"
     end
     super(**options)
     if options[:description]
@@ -1869,20 +1874,10 @@ class Family < Entry
   end
 
   def to_s
-    if @husband
-      husband = @husband
+    if arg == ''
+      "#{@husband || 'unknown'} and #{@wife || 'unknown'}"
     else
-      husband = "unknown"
-    end
-    if @wife
-      wife = @wife
-    else
-      wife = "unknown"
-    end
-    if arg
-      "@#{arg}@ #{husband} and #{wife}"
-    else
-      "#{husband} and #{wife}"
+      "@#{arg}@ #{@husband || 'unknown'} and #{@wife || 'unknown'}"
     end
   end
 
