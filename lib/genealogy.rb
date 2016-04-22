@@ -299,7 +299,7 @@ class Entry
         Head
       elsif fieldname == :indi
         Individual
-      elsif fieldname == :note
+      elsif fieldname == :notes
         Note
       elsif fieldname == :pages
         Page
@@ -1620,7 +1620,8 @@ class Source < Entry
   attr_reader :title
   attr_gedcom :title, :titl
   attr_ldap :title, :title
-  attr_reader :note
+  attr_multi :notes
+  attr_gedcom :notes, :note
   attr_reader :events
   attr_reader :corp
   attr_ldap :corp, :corp
