@@ -681,17 +681,15 @@ class Entry
           setinstancevariable fieldname, value
           ops.concat addldapops fieldname, value
         end
-      else
-        if iv and not (iv == "")
-          if value === iv
-            raise "Trying to add #{value.inspect} to #{fieldname.inspect} in #{self.inspect}, but it is already defined"
-          else
-            MultipleEntriesForNonMultiField.new superiorentry: self, fieldname: fieldname.to_s, newvalue: value, user: @user
-          end
+      elsif iv and not (iv == "")
+        if value === iv
+          raise "Trying to add #{value.inspect} to #{fieldname.inspect} in #{self.inspect}, but it is already defined"
         else
-          setinstancevariable fieldname, value
-          ops.concat addldapops fieldname, value
+          MultipleEntriesForNonMultiField.new superiorentry: self, fieldname: fieldname.to_s, newvalue: value, user: @user
         end
+      else
+        setinstancevariable fieldname, value
+        ops.concat addldapops fieldname, value
       end
     end
     unless ops == []
@@ -1232,15 +1230,6 @@ class Adoption < IndividualEvent
     end
   end
   
-  def initialize(superior: nil, ldapentry: nil, **options)
-    @parents = []
-    if ldapentry
-      super(ldapentry: ldapentry, **options)
-    else
-      super(superior: superior, description: "Adoption of #{superior.fullname}", **options)
-    end
-  end
-
   def addfields(**options)
     options.each do |fieldname, value|
       if fieldname == :childoffamily
