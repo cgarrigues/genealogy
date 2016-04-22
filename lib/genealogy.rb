@@ -1681,7 +1681,10 @@ class Source < Entry
       arg = matchdata[:ref].upcase.to_sym
       if @label[arg]
         @label[arg].superior = superior
-        superior.addfields(fieldname => @label[arg])
+        iv = superior.getinstancevariable(fieldname)
+        unless (iv and iv.any? {|v| v === self})
+          superior.addfields(fieldname => @label[arg])
+        end
         obj = @label[arg]
       else
         obj = classname.new fieldname: fieldname, label: label, arg: arg, superior: superior, sources: self, user: @user
