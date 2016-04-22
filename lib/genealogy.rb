@@ -438,7 +438,11 @@ class Entry
       @sources[0].label[@label] = self
       @sources[0].references[@label].each do |ref|
         iv = ref.superior.getinstancevariable(ref.fieldname)
-        if iv
+        if ref.superior.class.multivaluefield(ref.fieldname)
+          unless (iv and iv.any? {|v| v === self})
+            ref.superior.addfields(ref.fieldname => self)
+          end
+        elsif iv
           ref.superior.modifyfields(ref.fieldname => {iv => self})
         else
           ref.superior.addfields(ref.fieldname => self)
@@ -1851,7 +1855,7 @@ class Family < Entry
   end
   
   def === (foo)
-    (arg and (arg === foo.arg)) && (super || ((@husband === foo.husband) && (@@wife === foo.wife) && (@@children === foo.children)))
+    (arg && (arg === foo.arg)) && (super || ((@husband === foo.husband) && (@@wife === foo.wife) && (@@children === foo.children)))
   end
 
   def to_s
