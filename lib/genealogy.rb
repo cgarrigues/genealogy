@@ -435,6 +435,7 @@ class Entry
       end
     end
     if @label
+      # The first source is the one we're parsing.
       @sources[0].label[@label] = self
       @sources[0].references[@label].each do |ref|
         iv = ref.superior.getinstancevariable(ref.fieldname)
@@ -1676,7 +1677,13 @@ class Source < Entry
       if @label[arg]
         @label[arg].superior = superior
         iv = superior.getinstancevariable(fieldname)
-        unless (iv and iv.any? {|v| v === self})
+        if superior.class.multivaluefield(fieldname)
+          unless (iv and iv.any? {|v| v === self})
+            superior.addfields(fieldname => @label[arg])
+          end
+        elsif iv
+          superior.modifyfields(fieldname => {iv => @label[arg]})
+        else
           superior.addfields(fieldname => @label[arg])
         end
         obj = @label[arg]
