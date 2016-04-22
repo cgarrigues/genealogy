@@ -301,7 +301,7 @@ class Entry
         Individual
       elsif fieldname == :note
         Note
-      elsif fieldname == :page
+      elsif fieldname == :pages
         Page
       elsif fieldname == :sources
         Source
@@ -538,12 +538,12 @@ class Entry
           end
           unless added
             message = @user.ldap.get_operation_result.message
-            if message =~ /Entry Already Exists/
-              dupcount += 1
-              @dn = Net::LDAP::DN.new rdnfield.to_s, rdnvalue, @dn
-            else
+#            if message =~ /Entry Already Exists/
+#              dupcount += 1
+#              @dn = Net::LDAP::DN.new rdnfield.to_s, rdnvalue, @dn
+#            else
               raise "Couldn't add #{self.inspect} at #{@dn} with attributes #{attrs.inspect}: #{message}"
-            end
+#            end
           end
         end
         if dupcount == 1
@@ -664,7 +664,7 @@ class Entry
       iv = getinstancevariable(fieldname)
       if self.class.multivaluefield(fieldname)
         if iv and iv.any? {|v| v === value}
-          raise "Trying to add #{value.inspect} to #{fieldname} in #{self.inspect}, but it is already defined"
+          raise "Trying to add #{value.inspect} to #{fieldname.inspect} in #{self.inspect}, but it is already defined (#{iv.inspect})"
         else
           setinstancevariable fieldname, value
           ops.concat addldapops fieldname, value
@@ -672,9 +672,9 @@ class Entry
       else
         if iv and not (iv == "")
           if value === iv
-            raise "Trying to add #{value.inspect} to #{fieldname} in #{self.inspect}, but it is already defined"
+            raise "Trying to add #{value.inspect} to #{fieldname.inspect} in #{self.inspect}, but it is already defined"
           else
-            raise "Trying to add #{value.inspect} to #{fieldname} in #{self.inspect}, but it is already defined as #{iv.inspect}"
+            raise "Trying to add #{value.inspect} to #{fieldname.inspect} in #{self.inspect}, but it is already defined as #{iv.dn}"
           end
         else
           setinstancevariable fieldname, value
@@ -1628,9 +1628,12 @@ class Source < Entry
   attr_ldap :references, :referencedns
   attr_ldap :rawdata, :rawdata
   attr_gedcom :sources, :sour
-
+  attr_gedcom :pages, :page
+  attr_multi :pages
+  
   def initialize(arg: nil, filename: nil, **options)
     @authors = []
+    @pages = []
     if filename
       super(filename: filename, title: File.basename(filename), rawdata: (File.read filename), **options)
       @user.makeou "Individuals", self.dn
