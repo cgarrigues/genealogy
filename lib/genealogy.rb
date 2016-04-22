@@ -875,7 +875,7 @@ class StringArgument < Entry
     if superior.class.multivaluefield(fieldname) or superior.getinstancevariable('noldapobject') or (not iv) or (iv == "")
       superior.setinstancevariable(fieldname, arg)
     else
-      raise "what am I doing?"
+      raise "Trying to set #{fieldname.inspect} to #{arg}, but it is currently #{iv.inspect}"
     end
   end
 end
@@ -1156,14 +1156,6 @@ end
 
 class Burial < IndividualEvent
   ldap_class :gedcomburial
-
-  def initialize(superior: nil, ldapentry: nil, **options)
-    if ldapentry
-      super(ldapentry: ldapentry, **options)
-    else
-      super(superior: superior, description: "Burial of #{superior.fullname}", **options)
-    end
-  end
 end
 
 class CoupleEvent < Event
