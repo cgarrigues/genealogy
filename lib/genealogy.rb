@@ -590,7 +590,7 @@ class Entry
         end
       end
     else
-      puts "Can't add alias under #{dn} to #{dest.inspect} because the latter has no DN"
+      raise "Can't add alias under #{dn} to #{dest.inspect} because the latter has no DN"
     end
   end
 
@@ -1181,9 +1181,6 @@ class CoupleEvent < Event
         couple.push superior.wife
       end
       super(couple: couple, **options)
-      couple[1..999].each do |i|
-        i.makealias self
-      end
     end
   end
 
@@ -1192,6 +1189,11 @@ class CoupleEvent < Event
       options[:description] << " for #{@couple.map {|i| i.fullname}.join(' and ')}"
     end
     super(**options)
+    if options[:description]
+      @couple[1..999].each do |i|
+        i.makealias self
+      end
+    end
   end
 
   def basedn
