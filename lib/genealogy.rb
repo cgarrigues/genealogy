@@ -880,7 +880,7 @@ class StringArgument < Entry
   def initialize(fieldname: "", arg: "", superior: nil, **options)
     iv = superior.getinstancevariable(fieldname)
     if superior.class.multivaluefield(fieldname) or superior.getinstancevariable('noldapobject') or (not iv) or (iv == "")
-      superior.setinstancevariable(fieldname, arg)
+      superior.addfields(fieldname => arg)
     else
       raise "Trying to set #{fieldname.inspect} to #{arg}, but it is currently #{iv.inspect}"
     end
@@ -1039,6 +1039,8 @@ class Event < Entry
   attr_ldap :source, :sourcedns
   attr_multi :tasks
   attr_ldap :tasks, :taskdns
+  attr_multi :notes
+  attr_gedcom :notes, :note
 
   class << self
     def fieldnametoclass(fieldname)
