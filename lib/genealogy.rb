@@ -879,6 +879,11 @@ end
 class StringArgument < Entry
   def initialize(fieldname: "", arg: "", superior: nil, **options)
     iv = superior.getinstancevariable(fieldname)
+    puts fieldname.inspect
+    puts arg.inspect
+    puts iv.inspect
+    puts superior.class.multivaluefield(fieldname).inspect
+    puts superior.getinstancevariable('noldapobject').inspect
     if superior.class.multivaluefield(fieldname) or superior.getinstancevariable('noldapobject') or (not iv) or (iv == "")
       superior.addfields(fieldname => arg)
     else
@@ -1276,14 +1281,6 @@ end
 
 class Baptism < IndividualEvent
   ldap_class :gedcombaptism
-
-  def initialize(superior: nil, ldapentry: nil, **options)
-    if ldapentry
-      super(ldapentry: ldapentry, **options)
-    else
-      super(superior: superior, description: "Baptism of #{superior.fullname}", **options)
-    end
-  end
 end
 
 class Individual < Entry
