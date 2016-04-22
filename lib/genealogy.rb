@@ -1318,6 +1318,8 @@ class Individual < Entry
   attr_multi :parentoffamily
   attr_gedcom :parentoffamily, :fams
   attr_gedcom :childoffamily, :famc
+  attr_multi :notes
+  attr_gedcom :notes, :note
 
   class << self
     def fieldnametoclass(fieldname)
