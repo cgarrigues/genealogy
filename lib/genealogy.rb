@@ -681,7 +681,7 @@ class Entry
           if value === iv
             raise "Trying to add #{value.inspect} to #{fieldname.inspect} in #{self.inspect}, but it is already defined"
           else
-            ErrorAddingField.new superiorentry: self, fieldname: fieldname.to_s, newvalue: value, user: @user
+            MultipleEntriesForNonMultiField.new superiorentry: self, fieldname: fieldname.to_s, newvalue: value, user: @user
           end
         else
           setinstancevariable fieldname, value
@@ -2025,8 +2025,8 @@ class ConflictingEntries < Task
   end
 end
 
-class ErrorAddingField < Task
-  ldap_class :erroraddingfield
+class MultipleEntriesForNonMultiField < Task
+  ldap_class :multipleentriesfornonmultifield
   attr_reader :superiorentry
   attr_ldap :superiorentry, :superiorentrydn
   attr_ldap :fieldname, :fieldname
@@ -2041,7 +2041,7 @@ class ErrorAddingField < Task
   end
 
   def describeinfull
-    puts "Error adding field (#{@uniqueidentifier})"
+    puts "Duplicate entry in field (#{@uniqueidentifier})"
     puts "    #{@fieldname.to_sym.inspect} in #{@superiorentry}"
     puts "    first value: #{@superiorentry.send(@fieldname).dn}"
     puts "    second value: #{@newvalue.dn}"

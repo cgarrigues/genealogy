@@ -357,8 +357,8 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.2.1
 	)
 
 objectclass ( 1.3.6.1.4.1.19106.1.2.2.2
-	NAME 'ErrorAddingField'
-	DESC 'LDAP server had an error when we added a field'
+	NAME 'MultipleEntriesForNonMultiField'
+	DESC 'Tried to put mutiple entries in a field that cant take them'
 	STRUCTURAL
 	MUST (objectClass $ uniqueIdentifier )
 	MAY (superiorEntryDN $ fieldname $ newEntryDN )
