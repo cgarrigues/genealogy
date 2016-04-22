@@ -297,6 +297,8 @@ class Entry
         CharacterSet
       elsif fieldname == :head
         Head
+      elsif fieldname == :family
+        Family
       elsif fieldname == :indi
         Individual
       elsif fieldname == :notes
@@ -390,6 +392,7 @@ class Entry
   attr_reader :baddata
   attr_accessor :dn
   attr_multi :sources
+  attr_gedcom :family, :fam
 
   def === (foo)
     dn.to_s === foo.dn.to_s
