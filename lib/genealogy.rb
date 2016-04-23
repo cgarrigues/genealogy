@@ -1123,7 +1123,7 @@ class IndividualEvent < Event
 
   def addfields(**options)
     if options[:description]
-      options[:description] << " of #{individual}"
+      options[:description] << " / #{individual}"
     end
     super(**options)
   end
@@ -1174,7 +1174,6 @@ class CoupleEvent < Event
   attr_multi :couple
 
   def initialize(superior: nil, ldapentry: nil, **options)
-    @superiors = []
     if ldapentry
       super(ldapentry: ldapentry, **options)
     else
@@ -1191,7 +1190,7 @@ class CoupleEvent < Event
 
   def addfields(**options)
     if options[:description]
-      options[:description] << " of #{@couple.map {|i| i.fullname}.join(' and ')}"
+      options[:description] << " / #{@couple.map {|i| i.fullname}.join(' and ')}"
     end
     super(**options)
     if options[:description]
@@ -1220,10 +1219,28 @@ class Marriage < CoupleEvent
       end
     end
   end
+
+  def initialize(ldapentry: nil, **options)
+    if ldapentry
+      super(ldapentry: ldapentry, **options)
+    else
+      super(**options)
+      addfields(description: "Marriage")
+    end
+  end
 end
 
 class Divorce < CoupleEvent
   ldap_class :gedcomdivorce
+
+  def initialize(ldapentry: nil, **options)
+    if ldapentry
+      super(ldapentry: ldapentry, **options)
+    else
+      super(**options)
+      addfields(description: "Divorce")
+    end
+  end
 end
 
 class Adoption < IndividualEvent
@@ -1811,7 +1828,11 @@ class Page < Entry
     puts "   into #{otherpage.dn}"
     fixreferences self, otherpage
     references.each do |ref|
-     otherpage.addfields references: ref
+      if otherpage.references.any? {|v| v === ref}
+        puts "#{ref} is already referenced in #{otherpage}"
+      else
+        otherpage.addfields references: ref
+      end
     end
     puts "    Deleting #{dn}"
     @user.ldap.delete dn: dn
