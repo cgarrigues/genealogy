@@ -582,14 +582,14 @@ class Entry
   end
 
   def fixreferences(object, newdn)
+    @tasks.each do |task|
+      task.updatedns object, newdn
+    end
+
     a = @user.aliasfromdn[object.dn.to_s]
     a.dn = newdn
     @user.objectfromdn[newdn.to_s] = object
     @user.aliasfromdn[newdn.to_s] = a
-
-    @tasks.each do |task|
-      task.updatedns object, newdn
-    end
   end
   
   def renameandmoveto(newsuperior)
