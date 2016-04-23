@@ -1378,11 +1378,7 @@ class Individual < Entry
     else
       deathdate = ''
     end
-    if @arg
-      "@#{@arg}@ #{@fullname} #{birthdate} - #{deathdate}".rstrip
-    else
-      "#{@fullname} #{birthdate} - #{deathdate}".rstrip
-    end
+    "#{@fullname} #{birthdate} - #{deathdate}".rstrip
   end
 
   def birth
@@ -1896,11 +1892,7 @@ class Family < Entry
   end
 
   def to_s
-    if @arg == ''
-      "#{@husband || 'unknown'} and #{@wife || 'unknown'}"
-    else
-      "@#{@arg}@ #{@husband || 'unknown'} and #{@wife || 'unknown'}"
-    end
+    "#{@husband || 'unknown'} and #{@wife || 'unknown'}"
   end
 
   def addfields(**options)
