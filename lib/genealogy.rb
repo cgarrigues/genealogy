@@ -5,27 +5,6 @@ require 'net/ldap'
 require 'net/ldap/dn'
 require 'set'
 
-$names = Hash.new { |hash, key| hash[key] = Hash.new { |hash, key| hash[key] = Hash.new}}
-$places = {}
-
-def compareindividuals *individuals
-  puts "Comparing #{individuals.map{|i| i}.join ', '}"
-  
-end
-
-def listeventsbyplace(places: $places, depth: 0)
-  if depth == 0
-    puts "Listing events by place"
-  end
-  places.keys.sort.each do |key|
-    puts "#{' ' * depth}#{places[key].rawname}"
-    places[key].events.each do |event|
-      puts "#{' ' * depth} #{event.inspect}"
-    end
-    listeventsbyplace places: places[key].places, depth: depth+1
-  end
-end
-
 class Array
   def === (foo)
     if length == foo.length
@@ -42,6 +21,7 @@ class User
   attr_reader :username
   attr_reader :dn
   attr_reader :objectfromdn
+  attr_reader :aliasfromdn
   attr_reader :attributemetadata
 
   def initialize(username: username, password: password)
@@ -86,7 +66,8 @@ class User
     else
       raise "Couldn't read root subschema record: #{@ldap.get_operation_result.message}"
     end
-    @objectfromdn = Hash.new { |hash, key| hash[key] = getobjectfromdn key}
+    @objectfromdn = Hash.new { |hash, key| hash[key.to_s] = getobjectfromdn key}
+    @aliasfromdn = Hash.new { |hash, key| hash[key.to_s] = getaliasfromdn key}
     makeou "Names"
     makeou "Sources"
   end
@@ -127,6 +108,10 @@ class User
     object
   end
 
+  def getaliasfromdn(dn)
+    LdapAlias.new Net::LDAP::DN.new(dn), self
+  end
+
   def openldap
     @ldap.open do
       yield
@@ -159,7 +144,7 @@ class User
       return_result: false,
       ) do |entry|
           object = classfromentry(entry).new ldapentry: entry, user: self
-          @objectfromdn[object.dn] = object
+          @objectfromdn[object.dn.to_s] = object
           yield object
         end
         raise "Couldn't search #{base} for events: #{@ldap.get_operation_result.message}"
@@ -197,7 +182,7 @@ class User
       return_result: false,
     ) do |entry|
         indi = classfromentry(entry).new ldapentry: entry, user: self
-        @objectfromdn[indi.dn] = indi
+        @objectfromdn[indi.dn.to_s] = indi
         puts indi
         events = findobjects('gedcomEvent', indi.dn).sort_by do |event|
           [event.year||9999, event.month||0, event.day||0, event.relativetodate||0]
@@ -209,21 +194,25 @@ class User
     end
   end
 
+  def tasks
+    @tasks ||= findobjects("*", Net::LDAP::DN.new("ou", "Tasks", basedn))
+  end
+  
   def findtasks
-    findobjects("*", Net::LDAP::DN.new("ou", "Tasks", basedn)).each {|task|
+    tasks.each {|task|
       task.describeinfull
     }
   end
 
   def runtasks
-    findobjects("*", Net::LDAP::DN.new("ou", "Tasks", basedn)).each {|task|
+    tasks.each {|task|
       task.runtask
     }
   end
 end
 
 class LdapAlias
-  attr_reader :dn
+  attr_accessor :dn
 
   def initialize(dn, user)
     @dn = dn
@@ -235,7 +224,7 @@ class LdapAlias
   end
   
   def object
-    @user.objectfromdn[@dn]
+    @user.objectfromdn[@dn.to_s]
   end
 
   def to_s
@@ -403,7 +392,7 @@ class Entry
       syntax = @user.attributemetadata[fieldname][:syntax]
       if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
         # DN
-        value.map! {|dn| LdapAlias.new Net::LDAP::DN.new(dn), @user}
+        value.map! {|dn| @user.aliasfromdn[dn.to_s]}
       elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
         # Integer
         value.map! {|num| Integer(num)}
@@ -502,7 +491,7 @@ class Entry
         puts "#{rdnfield.inspect} in #{self.inspect} is an unresolved reference (#{rdnvalue.inspect})"
       else
         @dn = Net::LDAP::DN.new rdnfield.to_s, rdnvalue, basedn
-        @user.objectfromdn[@dn] = self
+        @user.objectfromdn[@dn.to_s] = self
         attrs = {}
         attrs[:objectclass] = self.class.allldapclasses
         attrs[rdnfield] = rdnvalue
@@ -592,14 +581,18 @@ class Entry
     end
   end
 
-  def fixreferences(old, new)
+  def fixreferences(object, newdn)
+    a = @user.aliasfromdn[object.dn.to_s]
+    a.dn = newdn
+    @user.objectfromdn[newdn.to_s] = object
+    @user.aliasfromdn[newdn.to_s] = a
+
     @tasks.each do |task|
-      task.object.updatedns old, new
+      task.updatedns object, newdn
     end
   end
   
   def renameandmoveto(newsuperior)
-    puts newsuperior
     (rdnfield, rdnvalue) = rdn
     newrdn = Net::LDAP::DN.new rdnfield.to_s, getnewrdn
     newdn = Net::LDAP::DN.new rdnfield.to_s, getnewrdn, newsuperior
@@ -611,8 +604,8 @@ class Entry
     end
   end
   
-  def updatedns(from, to)
-    raise "Not mapping #{from.dn} to #{to} in #{self.inspect}"
+  def updatedns(object, newdn)
+    raise "Not mapping #{object.dn} to #{newdn} in #{self.inspect}"
   end
 
   def inspect
@@ -624,6 +617,13 @@ class Entry
   end
 
   def setinstancevariable(fieldname, value)
+    syntax = @user.attributemetadata[self.class.fieldtoldap(fieldname)||fieldname][:syntax]
+    if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
+      # DN
+      if value.is_a? Net::LDAP::DN
+        value = @user.aliasfromdn[value.to_s]
+      end
+    end
     if self.class.multivaluefield(fieldname)
       if oldvalues = getinstancevariable(fieldname)
         instance_variable_set "@#{fieldname}".to_sym, oldvalues + [value]
@@ -807,7 +807,7 @@ class Entry
       @superior
     elsif dn
       superiordn = Net::LDAP::DN.new *((Net::LDAP::DN.new dn).to_a[2..999])
-      @user.objectfromdn[superiordn]
+      @user.objectfromdn[superiordn.to_s]
     end
   end
 end
@@ -1065,9 +1065,9 @@ class Event < Entry
     "#{description} #{date} #{place}".rstrip
   end
   
-  def fixreferences(old, new)
+  def fixreferences(object, newdn)
     @sources.each do |source|
-      source.object.updatedns old, new
+      source.object.updatedns object, newdn
     end
     super
   end
@@ -1075,7 +1075,8 @@ class Event < Entry
   def mergeinto(otherpage)
     puts "Merging #{dn}"
     puts "   into #{otherpage.dn}"
-    fixreferences self, otherpage
+    a = @user.aliasfromdn[dn.to_s]
+    fixreferences self, otherpage.dn
     puts "    Deleting #{dn}"
     @user.ldap.delete dn: dn
     @user.objectfromdn.delete dn
@@ -1132,8 +1133,8 @@ class IndividualEvent < Event
     "#{@individual} #{@description} #{date || '?'} #{@place}"
   end
 
-  def fixreferences(old, new)
-    individual.updatedns old, new
+  def fixreferences(object, newdn)
+    individual.updatedns object, newdn
     super
   end
 end
@@ -1447,33 +1448,33 @@ class Individual < Entry
     super(**options)
   end
 
-  def updatedns(from, to)
+  def updatedns(object, newdn)
     if @birth
-      if from.dn.to_s === @birth.dn.to_s
-        modifyfields(birth: {from => to})
+      if object.dn.to_s === @birth.dn.to_s
+        modifyfields(birth: {object => newdn})
       end
     end
     if @adoption
-      if from.dn.to_s === @adoption.dn.to_s
-        modifyfields(adoption: {from => to})
+      if object.dn.to_s === @adoption.dn.to_s
+        modifyfields(adoption: {object => newdn})
       end
     end
     if @baptism
-      if from.dn.to_s === @baptism.dn.to_s
-        modifyfields(baptism: {from => to})
+      if object.dn.to_s === @baptism.dn.to_s
+        modifyfields(baptism: {object => newdn})
       end
     end
     if @death
-      if from.dn.to_s === @death.dn.to_s
+      if object.dn.to_s === @death.dn.to_s
         # Don't know why modifyfields doesn't work here!
-        #modifyfields(death: {from => to})
-        deletefields(death: from)
-        addfields(death: to)
+        #modifyfields(death: {object => newdn})
+        deletefields(death: object)
+        addfields(death: newdn)
       end
     end
     if @burial
-      if from.dn.to_s === @burial.dn.to_s
-        modifyfields(burial: {from => to})
+      if object.dn.to_s === @burial.dn.to_s
+        modifyfields(burial: {object => newdn})
       end
     end
   end
@@ -1601,7 +1602,7 @@ class Name < Entry
       end
       @dn = dn
       makealias superior, superior.label.to_s
-      @user.objectfromdn[dn] = self
+      @user.objectfromdn[dn.to_s] = self
     end
   end
 
@@ -1817,16 +1818,16 @@ class Page < Entry
     (self == foo) or super or (foo.is_a?(Page) and (@pageno === foo.pageno))
   end
 
-  def fixreferences(old, new)
+  def fixreferences(object, newdn)
     references.each do |ref|
-      ref.object.updatedns old, new
+      ref.object.updatedns object, newdn
     end
   end
   
   def mergeinto(otherpage)
     puts "Merging #{dn}"
     puts "   into #{otherpage.dn}"
-    fixreferences self, otherpage
+    fixreferences self, otherpage.dn
     references.each do |ref|
       if otherpage.references.any? {|v| v === ref}
         puts "#{ref} is already referenced in #{otherpage}"
@@ -1994,7 +1995,7 @@ class ConflictingEntries < Task
     puts "Conflicting entries (#{@uniqueidentifier})"
     event = @baseentry.object
     while event
-      puts "    #{event.to_s}"
+      puts "    #{event.dn}"
       event = @user.findobjects(event.class.classtoldapclass, event.dn)[0]
     end
   end
@@ -2079,15 +2080,16 @@ class MultipleEntriesForNonMultiField < Task
     puts "                  #{@newvalue.dn}"
   end
   
-  def updatedns(from, to)
-    if from.dn.to_s === @superiorentry.dn.to_s
-      modifyfields(superiorentry: {from => to})
+  def updatedns(object, newdn)
+    if object.dn.to_s === @superiorentry.dn.to_s
+      modifyfields(superiorentry: {object => newdn})
     end
-    if from.dn.to_s === @newvalue.dn.to_s
+    if object.dn.to_s === @newvalue.dn.to_s
       # Don't know why modifyfields doesn't work here!
-      #modifyfields(newvalue: {from => to})
-      deletefields(newvalue: from)
-      addfields(newvalue: to)
+      #modifyfields(newvalue: {object => newdn})
+      deletefields(newvalue: object)
+      fixreferences(object, newdn)
+      addfields(newvalue: newdn)
     end
   end
 
