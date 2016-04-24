@@ -812,6 +812,23 @@ class Entry
       @user.objectfromdn[superiordn.to_s]
     end
   end
+
+  def updatedns(object, newdn)
+    fields = self.class.ldapfields.find_all {|field|
+      @user.attributemetadata[self.class.fieldtoldap(field) || field][:syntax] == '1.3.6.1.4.1.1466.115.121.1.12'
+    }
+    fields.each do |field|
+      if value = self.send(field)
+        if self.class.multivaluefield(field)
+          if value.any? {|v| v === self}
+            modifyfields(field => {object => newdn})
+          end
+        elsif object.dn.to_s === value.dn.to_s
+          modifyfields(field => {object => newdn})
+        end
+      end
+    end
+  end
 end
 
 class Head < Entry
@@ -1301,12 +1318,14 @@ end
 class Individual < Entry
   ldap_class :gedcomindividual
   attr_gedcom :gender, :sex
+  attr_reader :adoption
   attr_gedcom :adoption, :adop
+  attr_reader :baptism
   attr_gedcom :baptism, :bapm
   attr_gedcom :events, :even
   attr_gedcom :birth, :birt
   attr_ldap :birth, :birthdn
-  attr_reader :baptism
+  attr_reader :burial
   attr_gedcom :burial, :buri
   attr_accessor :death
   attr_gedcom :death, :deat
@@ -1327,6 +1346,7 @@ class Individual < Entry
   attr_ldap :first, :givenname
   attr_ldap :last, :sn
   attr_ldap :suffix, :initials
+  attr_reader :tasks
   attr_multi :tasks
   attr_ldap :tasks, :taskdns
   attr_multi :parentoffamily
@@ -1442,34 +1462,6 @@ class Individual < Entry
       end
     end
     super(**options)
-  end
-
-  def updatedns(object, newdn)
-    if @birth
-      if object.dn.to_s === @birth.dn.to_s
-        modifyfields(birth: {object => newdn})
-      end
-    end
-    if @adoption
-      if object.dn.to_s === @adoption.dn.to_s
-        modifyfields(adoption: {object => newdn})
-      end
-    end
-    if @baptism
-      if object.dn.to_s === @baptism.dn.to_s
-        modifyfields(baptism: {object => newdn})
-      end
-    end
-    if @death
-      if object.dn.to_s === @death.dn.to_s
-        modifyfields(death: {object => newdn})
-      end
-    end
-    if @burial
-      if object.dn.to_s === @burial.dn.to_s
-        modifyfields(burial: {object => newdn})
-      end
-    end
   end
 end
 
@@ -2050,6 +2042,7 @@ class MultipleEntriesForNonMultiField < Task
   attr_reader :superiorentry
   attr_ldap :superiorentry, :superiorentrydn
   attr_ldap :fieldname, :fieldname
+  attr_reader :newvalue
   attr_ldap :newvalue, :newentrydn
 
   def initialize(ldapentry: nil, **options)
@@ -2070,15 +2063,6 @@ class MultipleEntriesForNonMultiField < Task
     puts "                  #{@newvalue.dn}"
   end
   
-  def updatedns(object, newdn)
-    if object.dn.to_s === @superiorentry.dn.to_s
-      modifyfields(superiorentry: {object => newdn})
-    end
-    if object.dn.to_s === @newvalue.dn.to_s
-      modifyfields(newvalue: {object => newdn})
-    end
-  end
-
   def to_s
     "Error adding #{fieldname.inspect} in #{superiorentry.dn}"
   end
