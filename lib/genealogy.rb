@@ -1077,7 +1077,6 @@ class Event < Entry
   def mergeinto(otherpage)
     puts "Merging #{dn}"
     puts "   into #{otherpage.dn}"
-    a = @user.aliasfromdn[dn.to_s]
     fixreferences self, otherpage.dn
     @user.ldap.delete dn: dn
     @user.objectfromdn.delete dn
@@ -2008,7 +2007,8 @@ class ConflictingEntries < Task
   end
 
   def runtask
-    (leaves, internal) = getleafandinternalnodes @baseentry.object
+    baseobject = @baseentry.object
+    (leaves, internal) = getleafandinternalnodes baseobject
     while internal != []
       done = leaves.any? do |leaf|
         internal.any? do |internal|
@@ -2019,14 +2019,14 @@ class ConflictingEntries < Task
         end
       end
       if done
-        (leaves, internal) = getleafandinternalnodes @baseentry.object
+        (leaves, internal) = getleafandinternalnodes baseobject
       else
         leaves.each do |leaf|
           leaf.renameandmoveto @baseentry.superior.dn
           done = true
         end
         if done
-          (leaves, internal) = getleafandinternalnodes @baseentry.object
+          (leaves, internal) = getleafandinternalnodes baseobject
           if internal == []
             leaves.each do |leaf|
               leaf.renameandmoveto @baseentry.superior.dn
