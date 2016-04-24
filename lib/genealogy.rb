@@ -183,7 +183,6 @@ class User
     ) do |entry|
         indi = classfromentry(entry).new ldapentry: entry, user: self
         @objectfromdn[indi.dn.to_s] = indi
-        puts indi
         events = findobjects('gedcomEvent', indi.dn).sort_by do |event|
           [event.year||9999, event.month||0, event.day||0, event.relativetodate||0]
         end.each do |event|
@@ -1080,7 +1079,6 @@ class Event < Entry
     puts "   into #{otherpage.dn}"
     a = @user.aliasfromdn[dn.to_s]
     fixreferences self, otherpage.dn
-    puts "    Deleting #{dn}"
     @user.ldap.delete dn: dn
     @user.objectfromdn.delete dn
   end
@@ -1831,7 +1829,6 @@ class Page < Entry
         otherpage.addfields references: ref
       end
     end
-    puts "    Deleting #{dn}"
     @user.ldap.delete dn: dn
     @user.objectfromdn.delete dn
   end
