@@ -777,18 +777,21 @@ class Entry
               if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
                 # DN
                 if newvalue.is_a? Net::LDAP::DN
-                  ops.push [:replace, fieldname, [oldvalue.dn, newvalue]]
+                  # Don't know why :replace doesn't work
+                  #ops.push [:replace, fieldname, [oldvalue.dn, newvalue]]
+                  ops.push [:delete, fieldname, oldvalue.dn]
+                  ops.push [:add, fieldname, newvalue]
                 elsif newvalue.dn
                   ops.push [:replace, fieldname, [oldvalue.dn, newvalue.dn]]
                 end
               elsif syntax == '1.3.6.1.4.1.1466.115.121.1.27'
                 # Integer
-                ops.push [:delete, fieldname, [oldvalue.to_s, newvalue.to_s]]
+                ops.push [:replace, fieldname, [oldvalue.to_s, newvalue.to_s]]
               elsif syntax == '1.3.6.1.4.1.1466.115.121.1.7'
                 # Boolean
-                ops.push [:delete, fieldname, [oldvalue.to_s.upcase, newvalue.to_s.upcase]]
+                ops.push [:replace, fieldname, [oldvalue.to_s.upcase, newvalue.to_s.upcase]]
               else
-                ops.push [:delete, fieldname, [oldvalue, newvalue]]
+                ops.push [:replace, fieldname, [oldvalue, newvalue]]
               end
             end
           end
@@ -1462,10 +1465,7 @@ class Individual < Entry
     end
     if @death
       if object.dn.to_s === @death.dn.to_s
-        # Don't know why modifyfields doesn't work here!
-        #modifyfields(death: {object => newdn})
-        deletefields(death: object)
-        addfields(death: newdn)
+        modifyfields(death: {object => newdn})
       end
     end
     if @burial
@@ -2077,11 +2077,7 @@ class MultipleEntriesForNonMultiField < Task
       modifyfields(superiorentry: {object => newdn})
     end
     if object.dn.to_s === @newvalue.dn.to_s
-      # Don't know why modifyfields doesn't work here!
-      #modifyfields(newvalue: {object => newdn})
-      deletefields(newvalue: object)
-      fixreferences(object, newdn)
-      addfields(newvalue: newdn)
+      modifyfields(newvalue: {object => newdn})
     end
   end
 
