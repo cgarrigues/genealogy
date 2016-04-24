@@ -2008,6 +2008,7 @@ class ConflictingEntries < Task
 
   def runtask
     baseobject = @baseentry.object
+    basesuperiordn = @baseentry.superior.dn
     (leaves, internal) = getleafandinternalnodes baseobject
     while internal != []
       done = leaves.any? do |leaf|
@@ -2022,14 +2023,14 @@ class ConflictingEntries < Task
         (leaves, internal) = getleafandinternalnodes baseobject
       else
         leaves.each do |leaf|
-          leaf.renameandmoveto @baseentry.superior.dn
+          leaf.renameandmoveto basesuperiordn
           done = true
         end
         if done
           (leaves, internal) = getleafandinternalnodes baseobject
           if internal == []
             leaves.each do |leaf|
-              leaf.renameandmoveto @baseentry.superior.dn
+              leaf.renameandmoveto basesuperiordn
               done = true
             end
           end
