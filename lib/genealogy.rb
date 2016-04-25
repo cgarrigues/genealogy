@@ -198,15 +198,28 @@ class User
   end
   
   def findtasks
-    tasks.each {|task|
+    count = 0
+    tasks.each do |task|
       task.describeinfull
-    }
+      count += 1
+    end
+    puts
+    puts "#{count} tasks to do"
   end
 
   def runtasks
-    tasks.each {|task|
-      task.runtask
-    }
+    countrun = 0
+    countfailed = 0
+    tasks.each do |task|
+      if task.runtask
+        countrun +=1
+      else
+        countfailed += 1
+      end
+    end
+    puts
+    puts "#{countrun} tasks completed"
+    puts "#{countfailed} tasks not completed"
   end
 end
 
@@ -608,10 +621,11 @@ class Entry
   end
 
   def inspect
+    ref = @label ? " @#{@label}@" : (@arg && (not @arg == '')) ? " @#{@arg}@" : ""
     if @baddata
-      "#<#{self.class}: #{to_s} :BAD>"
+      "#<#{self.class}:#{ref} #{to_s} :BAD>"
     else
-      "#<#{self.class}: #{to_s}>"
+      "#<#{self.class}:#{ref} #{to_s}>"
     end
   end
 
@@ -651,7 +665,9 @@ class Entry
         syntax = @user.attributemetadata[fieldname][:syntax]
         if syntax == '1.3.6.1.4.1.1466.115.121.1.12'
           # DN
-          if value.is_a? Net::LDAP::DN
+          if value.is_a? Array
+            ops.push [:add, fieldname, value.map {|v| v.is_a?(Net::LDAP::DN) ? v : (v.dn || v)}]
+          elsif value.is_a? Net::LDAP::DN
             ops.push [:add, fieldname, value]
           elsif value.dn
             ops.push [:add, fieldname, value.dn]
@@ -753,7 +769,7 @@ class Entry
         instance_variable_set "@#{fieldname}".to_sym, oldvalues.delete_if {|i| i == oldvalue}
       end
     else
-      instance_variable_set "@#{fieldname}".to_sym, nil
+      instance_variable_set "@#{fieldname}".to_sym, newvalue
     end
   end
 
@@ -1265,13 +1281,13 @@ class Adoption < IndividualEvent
   ldap_class :gedcomadoption
   attr_reader :parents
   attr_ldap :parents, :parentdns
-  attr_multi :parentoffamily
-  attr_gedcom :parentoffamily, :fams
-  attr_gedcom :childoffamily, :famc
+  attr_multi :parents
+  attr_reader :family
+  attr_gedcom :family, :famc
 
   class << self
     def fieldnametoclass(fieldname)
-      if [:parentoffamily, :childoffamily].member? fieldname
+      if fieldname == :family
         Family
       else
         super
@@ -1279,17 +1295,27 @@ class Adoption < IndividualEvent
     end
   end
   
+  def initialize(ldapentry: nil, **options)
+    if ldapentry
+      super(ldapentry: ldapentry, **options)
+    else
+      super(**options)
+      addfields(description: "Adoption")
+    end
+  end
+
   def addfields(**options)
     options.each do |fieldname, value|
-      if fieldname == :childoffamily
+      if fieldname == :family
         value.addfields(events: self)
         if value.respond_to?(:husband) and value.husband
-          @parents.push value.husband
+          addfields(parents: value.husband)
+          value.husband.addfields(events: self)
         end
         if value.respond_to?(:wife) and value.wife
-          @parents.push value.wife
+          addfields(parents: value.wife)
+          value.wife.addfields(events: self)
         end
-        options.delete fieldname
       end
     end
     super(**options)
@@ -1297,13 +1323,15 @@ class Adoption < IndividualEvent
 
   def deletefields(**options)
     options.each do |fieldname, value|
-      if fieldname == :childoffamily
-        value.deletefields(even: self)
+      if fieldname == :family
+        value.deletefields(events: self)
         if value.husband
-          @parents.delete_if {|i| i == value.husband}
+          deletefields(parents: value.husband)
+          value.husband.deletefields(events: self)
         end
         if value.wife
-          @parents.delete_if {|i| i == value.wife}
+          deletefields(parents: value.wife)
+          value.wife.deletefields(events: self)
         end
       end
     end
@@ -1424,9 +1452,9 @@ class Individual < Entry
             newoptions[:suffix] = suffix
           end
         end
-      elsif fieldname == :buri
+      elsif fieldname == :burial
         options.delete fieldname
-      elsif fieldname == :bapm
+      elsif fieldname == :baptism
         options.delete fieldname
       elsif fieldname == :events
         if value and not self == value.superior
@@ -1883,29 +1911,50 @@ class Family < Entry
     "#{@husband || 'unknown'} and #{@wife || 'unknown'}"
   end
 
+  def addparentstochild(child, father: nil, mother: nil)
+    if (adoption = child.adoption) and (self == adoption.family)
+      parents = []
+      if father
+        father.addfields(events: adoption)
+        parents.push father
+      end
+      if mother
+        mother.addfields(events: adoption)
+        parents.push mother
+      end
+      unless parents == []
+        adoption.addfields(parents: parents)
+      end
+    else
+      additions = {}
+      if father
+        additions[:father] = father
+      end
+      if mother
+        additions[:mother] = mother
+      end
+      child.addfields(**additions)
+    end
+  end
+  
   def addfields(**options)
     options.each do |fieldname, value|
       if fieldname == :husband
         @children.each do |child|
-          child.addfields(father: value)
+          addparentstochild child, father: value
         end
         @events.each do |event|
           value.addfields(events: event)
         end
       elsif fieldname == :wife
         @children.each do |child|
-          child.addfields(mother: value)
+          addparentstochild child, mother: value
         end
         @events.each do |event|
           value.addfields(events: event)
         end
       elsif fieldname == :children
-        if @husband
-          value.addfields(father: @husband)
-        end
-        if @wife
-          value.addfields(mother: @wife)
-        end
+        addparentstochild value, father: @husband, mother: @wife
       elsif fieldname == :events
         if @husband
           @husband.addfields(events: value)
@@ -1922,24 +1971,14 @@ class Family < Entry
     options.each do |fieldname, value|
       if fieldname == :events
         if @husband
-          @husband.deletefields(even: event)
+          @husband.deletefields(events: event)
         end
         if @wife
-          @wife.deletefields(even: event)
+          @wife.deletefields(events: event)
         end
       end
     end
     super(**options)
-  end
-
-  def showevents
-    if @husband and @wife
-      compareindividuals @husband, @wife
-    elsif @husband
-      @husband.showevents
-    elsif @wife
-      @wife.showevents
-    end
   end
 end
 
@@ -1959,6 +1998,7 @@ class Task < Entry
 
   def runtask
     describeinfull
+    false
   end
 
   def deletefromtasklist
@@ -2030,6 +2070,7 @@ class ConflictingEntries < Task
       end
     end
     deletefromtasklist
+    true
   end
   
   def to_s
@@ -2080,6 +2121,7 @@ class ParseGedcomFile < Task
   def runtask
     deletefromtasklist
     @gedcomsource.parsefile
+    true
   end
   
   def to_s
