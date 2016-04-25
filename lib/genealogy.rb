@@ -183,6 +183,7 @@ class User
     ) do |entry|
         indi = classfromentry(entry).new ldapentry: entry, user: self
         @objectfromdn[indi.dn.to_s] = indi
+        puts indi
         events = findobjects('gedcomEvent', indi.dn).sort_by do |event|
           [event.year||9999, event.month||0, event.day||0, event.relativetodate||0]
         end.each do |event|
