@@ -208,11 +208,10 @@ attributetype ( 1.3.6.1.4.1.19106.1.1.27
         )
 
 attributetype ( 1.3.6.1.4.1.19106.1.1.28
-	NAME 'newEntryDN'
+	NAME 'entryDNs'
 	DESC 'DN of new entry'
         EQUALITY distinguishedNameMatch
         SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
-	SINGLE-VALUE
         )
 	
 attributetype ( 1.3.6.1.4.1.19106.1.1.29
@@ -357,11 +356,11 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.2.1
 	)
 
 objectclass ( 1.3.6.1.4.1.19106.1.2.2.2
-	NAME 'MultipleEntriesForNonMultiField'
-	DESC 'Tried to put mutiple entries in a field that cant take them'
+	NAME 'CombineEntries'
+	DESC 'Combine multiple entries'
 	STRUCTURAL
 	MUST (objectClass $ uniqueIdentifier )
-	MAY (superiorEntryDN $ fieldname $ newEntryDN )
+	MAY (entryDNs )
 	)
 
 objectclass ( 1.3.6.1.4.1.19106.1.2.2.3
@@ -369,5 +368,5 @@ objectclass ( 1.3.6.1.4.1.19106.1.2.2.3
 	DESC 'Gedcomfile was loaded and needs to be parsed'
 	STRUCTURAL
 	MUST (objectClass $ uniqueIdentifier )
-	MAY (superiorEntryDN $ fieldname $ newEntryDN )
+	MAY (superiorEntryDN )
 	)

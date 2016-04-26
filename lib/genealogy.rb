@@ -617,10 +617,6 @@ class Entry
     end
   end
   
-  def updatedns(object, newdn)
-    raise "Not mapping #{object.dn} to #{newdn} in #{self.inspect}"
-  end
-
   def inspect
     ref = @label ? " @#{@label}@" : (@arg && (not @arg == '')) ? " @#{@arg}@" : ""
     if @baddata
@@ -702,7 +698,7 @@ class Entry
         if value === iv
           raise "Trying to add #{value.inspect} to #{fieldname.inspect} in #{self.inspect}, but it is already defined"
         else
-          MultipleEntriesForNonMultiField.new superiorentry: self, fieldname: fieldname.to_s, newvalue: value, user: @user
+          CombineEntries.new entries: [value, iv], user: @user
         end
       else
         setinstancevariable fieldname, value
@@ -767,7 +763,7 @@ class Entry
   def modifyinstancevariable(fieldname, oldvalue, newvalue)
     if self.class.multivaluefield(fieldname)
       if oldvalues = getinstancevariable(fieldname)
-        instance_variable_set "@#{fieldname}".to_sym, oldvalues.delete_if {|i| i == oldvalue}
+        instance_variable_set "@#{fieldname}".to_sym, oldvalues.delete_if {|i| i === oldvalue}
       end
     else
       instance_variable_set "@#{fieldname}".to_sym, newvalue
@@ -837,8 +833,13 @@ class Entry
     fields.each do |field|
       if value = self.send(field)
         if self.class.multivaluefield(field)
-          if value.any? {|v| v === self}
-            modifyfields(field => {object => newdn})
+          if value.any? {|v| v.dn.to_s === object.dn.to_s}
+            if value.any? {|v| v.dn.to_s === newdn.to_s}
+              # If the new value is also in the list, remove instead of change
+              deletefields(field => object)
+            else
+              modifyfields(field => {object => newdn})
+            end
           end
         elsif object.dn.to_s === value.dn.to_s
           modifyfields(field => {object => newdn})
@@ -1431,7 +1432,7 @@ class Individual < Entry
   end
 
   def birth
-    @birth or Birth.new superior: self, fieldname: :birth, user: @user
+    @birth ||= Birth.new superior: self, fieldname: :birth, user: @user
   end
   
   def addfields(**options)
@@ -2079,34 +2080,33 @@ class ConflictingEntries < Task
   end
 end
 
-class MultipleEntriesForNonMultiField < Task
-  ldap_class :multipleentriesfornonmultifield
-  attr_reader :superiorentry
-  attr_ldap :superiorentry, :superiorentrydn
-  attr_ldap :fieldname, :fieldname
-  attr_reader :newvalue
-  attr_ldap :newvalue, :newentrydn
+class CombineEntries < Task
+  ldap_class :combineentries
+  attr_reader :entries
+  attr_ldap :entries, :entrydns
+  attr_multi :entries
 
   def initialize(ldapentry: nil, **options)
     super(ldapentry: ldapentry, **options)
     unless ldapentry
-      @superiorentry.addfields(tasks: self)
-      @newvalue.addfields(tasks: self)
+      @entries.each do |entry|
+        entry.addfields(tasks: self)
+      end
     end
   end
 
   def describeinfull
-    puts "Duplicate entry in field (#{@uniqueidentifier})"
-    puts "    #{@fieldname.to_sym.inspect} in #{@superiorentry}"
-    firstvalue = @superiorentry.send(@fieldname)
-    puts "    first value:  #{firstvalue}"
-    puts "                  #{firstvalue.dn}"
-    puts "    second value: #{@newvalue}"
-    puts "                  #{@newvalue.dn}"
+    puts "Combine entries (#{@uniqueidentifier})"
+    count = 1
+    @entries.each do |entry|
+      puts "#{count})\t#{entry.dn}"
+      puts "\t#{entry}"
+      count += 1
+    end
   end
   
   def to_s
-    "Error adding #{fieldname.inspect} in #{superiorentry.dn}"
+    "Combine entries: #{@entries.join(', ')}"
   end
 end
 
