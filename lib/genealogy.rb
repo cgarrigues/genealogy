@@ -188,6 +188,12 @@ class User
           [event.year||9999, event.month||0, event.day||0, event.relativetodate||0]
         end.each do |event|
           puts "    #{event.date}\t#{event.description}\t#{event.place}"
+          if event.combined?
+            event.sources.each do |sourceevent|
+              puts "        #{sourceevent.date}\t#{sourceevent.description}\t#{sourceevent.place}"
+            end
+          end
+          
         end
       end
       raise "Couldn't search #{@dn} for names: #{@ldap.get_operation_result.message}"
@@ -851,7 +857,7 @@ class Entry
   end
 
   def combined?
-    @sources.any? {|source| source.class == self.class}
+    @sources.any? {|source| source.object.class == self.class}
   end
 end
 
@@ -2165,7 +2171,7 @@ class CombineEntries < Task
       if @entries[1..999].all? {|entry| entry.superior == superior}
         klass = @entries[0].object.class
         values = klass.mergefields(@entries)
-        newentry = klass.new(sources: @entries, superior: superior, user: @user, **values)
+        newentry = klass.new(superior: superior, user: @user, **values)
         newentrydn = newentry.dn
         puts "    Created #{newentrydn}"
         @entries.each do |entry|
@@ -2175,6 +2181,7 @@ class CombineEntries < Task
           puts "    Relocating #{object.dn} under #{newentrydn}"
           object.renameandmoveto newentrydn
         end
+        newentry.addfields(sources: @entries)
       else
         raise "Trying to combine #{@entries.join(', ')} but they are not in the same tree"
       end
