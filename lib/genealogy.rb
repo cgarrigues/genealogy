@@ -460,7 +460,7 @@ class Entry
         addtoldap
       end
     end
-    if @superior
+    if @superior and fieldname
       if @superior.class.multivaluefield(fieldname)
         iv = @superior.getinstancevariable(fieldname)
         unless (iv and iv.any? {|v| v === self})
@@ -594,27 +594,29 @@ class Entry
     end
   end
 
-  def fixreferences(object, newdn)
+  def fixreferences(newdn)
     @tasks.each do |task|
-      task.updatedns object, newdn
+      task.updatedns self, newdn
     end
 
-    a = @user.aliasfromdn[object.dn.to_s]
+    a = @user.aliasfromdn[self.dn.to_s]
     a.dn = newdn
-    @user.objectfromdn[newdn.to_s] = object
+    @user.objectfromdn[newdn.to_s] = self
     @user.aliasfromdn[newdn.to_s] = a
   end
   
-  def renameandmoveto(newsuperior)
+  def renameandmoveto(newsuperiordn)
     (rdnfield, rdnvalue) = rdn
     newrdn = Net::LDAP::DN.new rdnfield.to_s, getnewrdn
-    newdn = Net::LDAP::DN.new rdnfield.to_s, getnewrdn, newsuperior
+    newdn = Net::LDAP::DN.new rdnfield.to_s, getnewrdn, newsuperiordn
     puts "Renaming #{dn}"
     puts "      to #{newdn}"
-    fixreferences self, newdn
-    unless @user.ldap.rename(olddn: self.dn, newrdn: newrdn, delete_attributes: true, new_superior: newsuperior)
+    fixreferences newdn
+    @superior = @user.objectfromdn[newsuperiordn.to_s]
+    unless @user.ldap.rename(olddn: self.dn, newrdn: newrdn, delete_attributes: true, new_superior: newsuperiordn)
       raise "Couldn't rename #{self.dn} to #{newdn}"
     end
+    @dn = newdn
   end
   
   def inspect
@@ -713,7 +715,7 @@ class Entry
   def deleteinstancevariable(fieldname, value)
     if self.class.multivaluefield(fieldname)
       if oldvalues = getinstancevariable(fieldname)
-        instance_variable_set "@#{fieldname}".to_sym, oldvalues.delete_if {|i| i == value}
+        instance_variable_set "@#{fieldname}".to_sym, oldvalues.delete_if {|i| i === value}
       end
     else
       instance_variable_set "@#{fieldname}".to_sym, nil
@@ -724,12 +726,12 @@ class Entry
     ops = []
     options.each do |fieldname, value|
       iv = getinstancevariable(fieldname)
-      deleteinstancevariable fieldname, value
       if not iv
         raise "Trying to delete #{value.inspect} from #{fieldname} in #{self.inspect}, but #{fieldname} is not defined"
       elsif self.class.multivaluefield(fieldname) ?
               (iv.any? {|v| v === value}) :
               (value === iv)
+        deleteinstancevariable fieldname, value
         if @user and @dn
           if fieldname = self.class.fieldtoldap(fieldname)
             syntax = @user.attributemetadata[fieldname][:syntax]
@@ -752,7 +754,7 @@ class Entry
           end
         end
       else
-        raise "Trying to delete #{oldvalue.inspect} from #{fieldname} in #{self.inspect}, but #{fieldname} contains #{iv.inspect}"
+        raise "Trying to delete #{value.inspect} from #{fieldname} in #{self.inspect}, but #{fieldname} contains #{iv.inspect}"
       end
     end
     unless ops == []
@@ -846,6 +848,10 @@ class Entry
         end
       end
     end
+  end
+
+  def combined?
+    @sources.any? {|source| source.class == self.class}
   end
 end
 
@@ -1071,7 +1077,8 @@ class Event < Entry
   attr_ldap :description, :description
   attr_reader :sources
   attr_gedcom :sources, :sour
-  attr_ldap :source, :sourcedns
+  attr_ldap :sources, :sourcedns
+  attr_reader :tasks
   attr_multi :tasks
   attr_ldap :tasks, :taskdns
   attr_multi :notes
@@ -1086,6 +1093,21 @@ class Event < Entry
       else
         super
       end
+    end
+
+    def mergefields(entries)
+      values = {}
+      places = entries.map {|e| e.place}.find_all {|v| v}
+      unless places == []
+        # Need to figure out which place is more specific
+        values[:place] = places[0]
+      end
+      dates = entries.map {|e| e.date}.find_all {|v| v}
+      unless dates == []
+        # Need to figure out which date is more specific
+        values[:date] = dates[0]
+      end
+      values
     end
   end
 
@@ -1102,17 +1124,17 @@ class Event < Entry
     "#{description} #{date} #{place}".rstrip
   end
   
-  def fixreferences(object, newdn)
+  def fixreferences(newdn)
     @sources.each do |source|
-      source.object.updatedns object, newdn
+      source.object.updatedns self, newdn
     end
     super
   end
 
-  def mergeinto(otherpage)
+  def mergeinto(otherentry)
     puts "Merging #{dn}"
-    puts "   into #{otherpage.dn}"
-    fixreferences self, otherpage.dn
+    puts "   into #{otherentry.dn}"
+    fixreferences otherentry.dn
     @user.ldap.delete dn: dn
     @user.objectfromdn.delete dn
   end
@@ -1149,6 +1171,17 @@ end
 class IndividualEvent < Event
   ldap_class :gedcomindividualevent
 
+  class << self
+    def mergefields(entries)
+      values = super
+      individuals = entries.map {|e| e.individual}.find_all {|v| v}
+      unless individuals == []
+        values[:individual] = individuals[0]
+      end
+      values
+    end
+  end
+
   def individual
     if superior.is_a? IndividualEvent
       superior.individual
@@ -1168,8 +1201,8 @@ class IndividualEvent < Event
     "#{@individual} #{@description} #{date || '?'} #{@place}"
   end
 
-  def fixreferences(object, newdn)
-    individual.updatedns object, newdn
+  def fixreferences(newdn)
+    individual.updatedns self, newdn
     super
   end
 end
@@ -1188,6 +1221,7 @@ end
 
 class Death < IndividualEvent
   ldap_class :gedcomdeath
+  attr_reader :cause
   attr_gedcom :cause, :caus
   attr_ldap :cause, :cause
 
@@ -1196,6 +1230,17 @@ class Death < IndividualEvent
       super(ldapentry: ldapentry, **options)
     else
       super(superior: superior, description: "Death of #{superior.fullname}", **options)
+    end
+  end
+
+  class << self
+    def mergefields(entries)
+      values = super
+      causes = entries.map {|e| e.cause}.find_all {|v| v}
+      unless causes == []
+        values[:cause] = causes[0]
+      end
+      values
     end
   end
 end
@@ -1833,16 +1878,16 @@ class Page < Entry
     (self == foo) or super or (foo.is_a?(Page) and (@pageno === foo.pageno))
   end
 
-  def fixreferences(object, newdn)
+  def fixreferences(newdn)
     references.each do |ref|
-      ref.object.updatedns object, newdn
+      ref.object.updatedns self, newdn
     end
   end
   
   def mergeinto(otherpage)
     puts "Merging #{dn}"
     puts "   into #{otherpage.dn}"
-    fixreferences self, otherpage.dn
+    fixreferences otherpage.dn
     references.each do |ref|
       if otherpage.references.any? {|v| v === ref}
         puts "#{ref} is already referenced in #{otherpage}"
@@ -2017,7 +2062,7 @@ class ConflictingEntries < Task
     puts "Conflicting entries (#{@uniqueidentifier})"
     event = @baseentry.object
     while event
-      puts "    #{event.dn}"
+      puts "\t#{event.dn}"
       event = @user.findobjects(event.class.classtoldapclass, event.dn)[0]
     end
   end
@@ -2041,6 +2086,7 @@ class ConflictingEntries < Task
   end
 
   def runtask
+    describeinfull
     baseobject = @baseentry.object
     basesuperiordn = @baseentry.superior.dn
     (leaves, internal) = getleafandinternalnodes baseobject
@@ -2104,9 +2150,43 @@ class CombineEntries < Task
       count += 1
     end
   end
+
+  def fixreferences(newdn)
+    @entries.each do |entry|
+      entry.object.updatedns self, newdn
+    end
+    super
+  end
+  
+  def runtask
+    if @entries.length > 1
+      puts "Combining entries (#{@uniqueidentifier})"
+      superior = entries[0].superior
+      if @entries[1..999].all? {|entry| entry.superior == superior}
+        klass = @entries[0].object.class
+        values = klass.mergefields(@entries)
+        newentry = klass.new(sources: @entries, superior: superior, user: @user, **values)
+        newentrydn = newentry.dn
+        puts "    Created #{newentrydn}"
+        @entries.each do |entry|
+          object = entry.object
+          puts "    Fixing references to #{object.dn} to point to #{newentrydn}"
+          object.fixreferences newentrydn
+          puts "    Relocating #{object.dn} under #{newentrydn}"
+          object.renameandmoveto newentrydn
+        end
+      else
+        raise "Trying to combine #{@entries.join(', ')} but they are not in the same tree"
+      end
+    else
+      puts "Skipping #{@uniqueidentifier} because #{@entries[0]} only has one entry"
+    end
+    deletefromtasklist
+    true
+  end
   
   def to_s
-    "Combine entries: #{@entries.join(', ')}"
+    "Combine entries: #{@entries.inspect}"
   end
 end
 
