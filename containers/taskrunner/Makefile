@@ -7,8 +7,6 @@ CONTAINERNAME = genealogytaskrunner
 all: build
 
 build:
-	cp -r ../../lib genealogy/.
-	cp -r ../../bin genealogy/.
 	docker build -t $(NAME):$(VERSION) --rm .
 
 build-nocache:
@@ -18,4 +16,4 @@ run:
 	-docker stop $(CONTAINERNAME)
 	-docker rm $(CONTAINERNAME)
 	-docker volume ls -q|xargs docker volume rm
-	docker run --name $(CONTAINERNAME) --detach $(NAME):$(VERSION)
+	docker run --name $(CONTAINERNAME) -v /Users/cgarrigues/GitHub/genealogy/lib:/genealogy/lib --detach $(NAME):$(VERSION)

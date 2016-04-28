@@ -7,6 +7,3 @@
 /pkg/
 /spec/reports/
 /tmp/
-
-containers/taskrunner/genealogy/bin
-containers/taskrunner/genealogy/lib

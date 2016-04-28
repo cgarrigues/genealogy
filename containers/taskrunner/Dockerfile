@@ -11,7 +11,7 @@ RUN apt-get -y update \
    && apt-get clean \
    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-ADD genealogy /genealogy
+ADD bin /genealogy/bin
 
 # Add service directory to /container/service
 ADD service /container/service
