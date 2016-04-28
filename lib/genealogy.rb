@@ -391,6 +391,19 @@ class Entry
       end
       ldapclasses
     end
+
+    def combine(entries, superior, user)
+      values = mergefields(entries)
+      newentry = new(superior: superior, user: user, **values)
+      newentrydn = newentry.dn
+      puts "Created #{newentrydn}"
+      entries.each do |entry|
+        object = entry.object
+        object.fixreferences newentrydn
+        object.renameandmoveto newentrydn
+      end
+      newentry.addfields(sources: entries)
+    end
   end
   
   attr_reader :fieldname
@@ -576,7 +589,7 @@ class Entry
 
   def makealias(dest, rdnvalue=nil)
     if dest.dn
-      if rdnvalue
+      if rdnvalue and not (rdnvalue == "")
         rdnfield = dest.rdn[0]
       else
         (rdnfield, rdnvalue) = dest.rdn
@@ -1300,7 +1313,7 @@ class Marriage < CoupleEvent
   class << self
     def fieldnametoclass(fieldname)
       if fieldname == :officiator
-        Officiator
+        Name
       else
         super
       end
@@ -1553,14 +1566,6 @@ class CharacterSet < Entry
     else
       raise "Don't know what to do with #{arg} encoding"
     end
-  end
-end
-
-class Officiator < Entry
-  def initialize(arg: "", superior: nil, **options)
-    (@first, @last, @suffix) = arg.split(/\s*\/[\s,]*/)
-    puts "#{arg} officiated at #{superior.inspect}"
-#    superior.addfields(fieldname, $names[@last][@first][@suffix]])
   end
 end
 
@@ -2092,7 +2097,6 @@ class ConflictingEntries < Task
   end
 
   def runtask
-    describeinfull
     baseobject = @baseentry.object
     basesuperiordn = @baseentry.superior.dn
     (leaves, internal) = getleafandinternalnodes baseobject
@@ -2169,19 +2173,7 @@ class CombineEntries < Task
       puts "Combining entries (#{@uniqueidentifier})"
       superior = entries[0].superior
       if @entries[1..999].all? {|entry| entry.superior == superior}
-        klass = @entries[0].object.class
-        values = klass.mergefields(@entries)
-        newentry = klass.new(superior: superior, user: @user, **values)
-        newentrydn = newentry.dn
-        puts "    Created #{newentrydn}"
-        @entries.each do |entry|
-          object = entry.object
-          puts "    Fixing references to #{object.dn} to point to #{newentrydn}"
-          object.fixreferences newentrydn
-          puts "    Relocating #{object.dn} under #{newentrydn}"
-          object.renameandmoveto newentrydn
-        end
-        newentry.addfields(sources: @entries)
+        @entries[0].object.class.combine(@entries, superior, @user)
       else
         raise "Trying to combine #{@entries.join(', ')} but they are not in the same tree"
       end
