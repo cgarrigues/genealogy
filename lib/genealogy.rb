@@ -218,6 +218,7 @@ class User
     countrun = 0
     countfailed = 0
     tasks.each do |task|
+      task.describeinfull
       if task.runtask
         countrun +=1
       else
@@ -2055,7 +2056,7 @@ class Task < Entry
   end
 
   def runtask
-    describeinfull
+    puts "Not yet implemented"
     false
   end
 
