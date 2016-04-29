@@ -1,0 +1,14 @@
+
+<h1>Listing names</h1>
+ 
+<table>
+  <tr>
+    <th>Last</th>
+  </tr>
+ 
+  <% @names.each do |article| %>
+    <tr>
+      <td><%= article.last %></td>
+    </tr>
+  <% end %>
+</table>

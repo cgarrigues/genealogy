@@ -203,6 +203,10 @@ class User
   def tasks
     @tasks ||= findobjects("*", Net::LDAP::DN.new("ou", "Tasks", basedn))
   end
+
+  def lastnames
+    @lastnames ||= findobjects("*", Net::LDAP::DN.new("ou", "Names", dn))
+  end
   
   def findtasks
     count = 0
