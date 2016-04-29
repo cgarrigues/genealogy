@@ -7,7 +7,8 @@ MAINTAINER Chris Garrigues <cwg@deepeddy.com>
 RUN apt-get -y update \
     && LC_ALL=C DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
        nginx ssl-cert ruby \
-   && gem install ansel net-ldap \
+   && gem install rails thin ansel net-ldap \
+   && thin install \
    && apt-get clean \
    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 

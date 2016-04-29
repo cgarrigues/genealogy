@@ -1,6 +1,6 @@
-NAME = cgarrigues/webserver
+NAME = cgarrigues/railsserver
 VERSION = 0.1.0
-CONTAINERNAME = genealogywebserver
+CONTAINERNAME = genealogyrails
 
 .PHONY: all build build-nocache
 
@@ -16,4 +16,4 @@ run:
 	-docker stop $(CONTAINERNAME)
 	-docker rm $(CONTAINERNAME)
 	-docker volume ls -q|xargs docker volume rm
-	docker run --name $(CONTAINERNAME) -p 4343:443 -p 8080:80 -v /Users/cgarrigues/GitHub/genealogy/lib:/genealogy/lib --detach $(NAME):$(VERSION)
+	docker run --name $(CONTAINERNAME) -p 8880:3000 -v /Users/cgarrigues/GitHub/genealogy/lib:/genealogy/lib --detach $(NAME):$(VERSION)
